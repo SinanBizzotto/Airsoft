@@ -308,13 +308,13 @@ export default function Admin() {
         </div>
 
         <div style={styles.statsGrid}>
-          <StatCard title="Gesamt" value={stats.total} />
-          <StatCard title="Neu" value={stats.neu} />
-          <StatCard title="Gespräch" value={stats.gespräch} />
-          <StatCard title="Tryout" value={stats.tryout} />
-          <StatCard title="Aufgenommen" value={stats.aufgenommen} />
-          <StatCard title="Abgelehnt" value={stats.abgelehnt} />
-          <StatCard title="Archiv" value={stats.archived} />
+          <StatCard title="Gesamt" value={stats.total} onClick={() => setStatusFilter('alle')} active={statusFilter === 'alle'} />
+          <StatCard title="Neu" value={stats.neu} onClick={() => setStatusFilter('neu')} active={statusFilter === 'neu'} />
+          <StatCard title="Gespräch" value={stats.gespräch} onClick={() => setStatusFilter('gespräch')} active={statusFilter === 'gespräch'} />
+          <StatCard title="Tryout" value={stats.tryout} onClick={() => setStatusFilter('tryout')} active={statusFilter === 'tryout'} />
+          <StatCard title="Aufgenommen" value={stats.aufgenommen} onClick={() => setStatusFilter('aufgenommen')} active={statusFilter === 'aufgenommen'} />
+          <StatCard title="Abgelehnt" value={stats.abgelehnt} onClick={() => setStatusFilter('abgelehnt')} active={statusFilter === 'abgelehnt'} />
+          <StatCard title="Archiv" value={stats.archived} onClick={() => setShowArchived((prev) => !prev)} active={showArchived} />
         </div>
 
         <div style={styles.toolbar}>
@@ -544,12 +544,24 @@ export default function Admin() {
   )
 }
 
-function StatCard({ title, value }) {
+function StatCard({ title, value, onClick, active }) {
   return (
-    <div style={styles.statCard}>
+    <button
+      onClick={onClick}
+      style={{
+        ...styles.statCard,
+        cursor: 'pointer',
+        border: active
+          ? '1px solid rgba(179,18,23,0.55)'
+          : '1px solid rgba(255,255,255,0.08)',
+        background: active
+          ? 'rgba(179,18,23,0.14)'
+          : 'rgba(255,255,255,0.04)',
+      }}
+    >
       <p style={styles.statLabel}>{title}</p>
       <h3 style={styles.statValue}>{value}</h3>
-    </div>
+    </button>
   )
 }
 

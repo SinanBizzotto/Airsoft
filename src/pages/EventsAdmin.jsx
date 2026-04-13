@@ -16,16 +16,12 @@ const initialForm = {
   notes: '',
 }
 
-const handleLogout = async () => {
-  await supabase.auth.signOut()
-  window.location.href = '/admin'
-}
-
 export default function EventsAdmin() {
   const [events, setEvents] = useState([])
   const [form, setForm] = useState(initialForm)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState(null)
 
   useEffect(() => {
     fetchEvents()
@@ -49,12 +45,42 @@ export default function EventsAdmin() {
     setLoading(false)
   }
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/admin'
+  }
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((prev) => ({
       ...prev,
       [name]: value,
     }))
+  }
+
+  const resetForm = () => {
+    setForm(initialForm)
+    setEditingId(null)
+  }
+
+  const handleEdit = (event) => {
+    setEditingId(event.id)
+    setForm({
+      title: event.title || '',
+      event_type: event.event_type || 'training',
+      event_date: event.event_date
+        ? new Date(event.event_date).toISOString().slice(0, 16)
+        : '',
+      location: event.location || '',
+      field_name: event.field_name || '',
+      description: event.description || '',
+      status: event.status || 'geplant',
+      max_participants: event.max_participants ?? '',
+      required_camo: event.required_camo || '',
+      required_gear: event.required_gear || '',
+      notes: event.notes || '',
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleSubmit = async (e) => {
@@ -75,16 +101,31 @@ export default function EventsAdmin() {
       notes: form.notes,
     }
 
-    const { error } = await supabase.from('events').insert([payload])
+    let error
+
+    if (editingId) {
+      const response = await supabase
+        .from('events')
+        .update(payload)
+        .eq('id', editingId)
+
+      error = response.error
+    } else {
+      const response = await supabase
+        .from('events')
+        .insert([payload])
+
+      error = response.error
+    }
 
     if (error) {
       console.error(error)
-      alert('Event konnte nicht erstellt werden.')
+      alert(editingId ? 'Event konnte nicht aktualisiert werden.' : 'Event konnte nicht erstellt werden.')
       setSaving(false)
       return
     }
 
-    setForm(initialForm)
+    resetForm()
     await fetchEvents()
     setSaving(false)
   }
@@ -93,12 +134,19 @@ export default function EventsAdmin() {
     const confirmed = window.confirm('Event wirklich löschen?')
     if (!confirmed) return
 
-    const { error } = await supabase.from('events').delete().eq('id', id)
+    const { error } = await supabase
+      .from('events')
+      .delete()
+      .eq('id', id)
 
     if (error) {
       console.error(error)
       alert('Event konnte nicht gelöscht werden.')
       return
+    }
+
+    if (editingId === id) {
+      resetForm()
     }
 
     setEvents((prev) => prev.filter((event) => event.id !== id))
@@ -174,7 +222,8 @@ export default function EventsAdmin() {
             <p style={styles.eyebrow}>AS BS 04 / Event Ops</p>
             <h1 style={styles.title}>Event Verwaltung</h1>
             <p style={styles.subtitle}>
-              Trainings, Spieltage, Tryouts und interne Termine zentral verwalten.
+              Trainings, Spieltage, Tryouts und interne Termine zentral erstellen,
+              bearbeiten und verwalten.
             </p>
           </div>
 
@@ -182,23 +231,29 @@ export default function EventsAdmin() {
             <button style={styles.secondaryBtn} onClick={fetchEvents}>
               Neu laden
             </button>
-
             <button style={styles.secondaryBtn} onClick={handleLogout}>
               Logout
             </button>
-
             <button
-              style={styles.primaryBtn}
+              style={styles.secondaryBtn}
               onClick={() => (window.location.href = '/admin')}
             >
-              Zum Recruitment
+              Recruitment
+            </button>
+            <button
+              style={styles.primaryBtn}
+              onClick={() => (window.location.href = '/')}
+            >
+              Zur Website
             </button>
           </div>
         </div>
 
         <div style={styles.layout}>
           <div style={styles.formCard}>
-            <h2 style={styles.sectionTitle}>Neues Event</h2>
+            <h2 style={styles.sectionTitle}>
+              {editingId ? 'Event bearbeiten' : 'Neues Event'}
+            </h2>
 
             <form onSubmit={handleSubmit} style={styles.form}>
               <input
@@ -210,7 +265,12 @@ export default function EventsAdmin() {
                 style={styles.input}
               />
 
-              <select name="event_type" value={form.event_type} onChange={handleChange} style={styles.input}>
+              <select
+                name="event_type"
+                value={form.event_type}
+                onChange={handleChange}
+                style={styles.input}
+              >
                 <option value="training">training</option>
                 <option value="tryout">tryout</option>
                 <option value="event">event</option>
@@ -268,7 +328,12 @@ export default function EventsAdmin() {
                 style={styles.input}
               />
 
-              <select name="status" value={form.status} onChange={handleChange} style={styles.input}>
+              <select
+                name="status"
+                value={form.status}
+                onChange={handleChange}
+                style={styles.input}
+              >
                 <option value="geplant">geplant</option>
                 <option value="offen">offen</option>
                 <option value="voll">voll</option>
@@ -294,9 +359,25 @@ export default function EventsAdmin() {
                 style={styles.textarea}
               />
 
-              <button type="submit" style={styles.primaryBtn} disabled={saving}>
-                {saving ? 'Speichert...' : 'Event erstellen'}
-              </button>
+              <div style={styles.formActions}>
+                <button type="submit" style={styles.primaryBtn} disabled={saving}>
+                  {saving
+                    ? 'Speichert...'
+                    : editingId
+                    ? 'Event aktualisieren'
+                    : 'Event erstellen'}
+                </button>
+
+                {editingId && (
+                  <button
+                    type="button"
+                    style={styles.secondaryBtn}
+                    onClick={resetForm}
+                  >
+                    Bearbeitung abbrechen
+                  </button>
+                )}
+              </div>
             </form>
           </div>
 
@@ -319,9 +400,20 @@ export default function EventsAdmin() {
                         </p>
                       </div>
 
-                      <button style={styles.deleteBtn} onClick={() => deleteEvent(event.id)}>
-                        Löschen
-                      </button>
+                      <div style={styles.eventButtons}>
+                        <button
+                          style={styles.secondaryBtn}
+                          onClick={() => handleEdit(event)}
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          style={styles.deleteBtn}
+                          onClick={() => deleteEvent(event.id)}
+                        >
+                          Löschen
+                        </button>
+                      </div>
                     </div>
 
                     <div style={styles.infoGrid}>
@@ -460,6 +552,11 @@ const styles = {
     display: 'grid',
     gap: '12px',
   },
+  formActions: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+  },
   input: {
     width: '100%',
     padding: '13px 14px',
@@ -497,6 +594,12 @@ const styles = {
     gap: '14px',
     alignItems: 'flex-start',
     marginBottom: '14px',
+    flexWrap: 'wrap',
+  },
+  eventButtons: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
   },
   eventTitle: {
     margin: '0 0 6px 0',
