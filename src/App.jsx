@@ -9,13 +9,57 @@ import gallery6 from './assets/gallery/gallery-6.jpg'
 import { supabase } from './lib/supabase'
 import Admin from './pages/Admin'
 import EventsAdmin from './pages/EventsAdmin'
+import Login from './pages/Login'
 
 function App() {
+  const [session, setSession] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setAuthLoading(false)
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      setAuthLoading(false)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const isAdminRoute =
+    window.location.pathname === '/admin' ||
+    window.location.pathname === '/admin/events'
+
+  if (authLoading && isAdminRoute) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#0b0c10',
+          color: '#fff',
+          fontFamily: 'Arial, sans-serif',
+        }}
+      >
+        Lädt...
+      </div>
+    )
+  }
+
   if (window.location.pathname === '/admin/events') {
+    if (!session) return <Login />
     return <EventsAdmin />
   }
 
   if (window.location.pathname === '/admin') {
+    if (!session) return <Login />
     return <Admin />
   }
 

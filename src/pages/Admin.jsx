@@ -167,6 +167,11 @@ export default function Admin() {
     }
   }, [applications])
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/admin'
+  }
+
   return (
     <div style={styles.page}>
       <style>{`
@@ -265,7 +270,9 @@ export default function Admin() {
             <button style={styles.secondaryBtn} onClick={fetchApplications}>
               Neu laden
             </button>
-
+            <button style={styles.secondaryBtn} onClick={handleLogout}>
+              Logout
+            </button>
             <button
               style={styles.secondaryBtn}
               onClick={() => (window.location.href = '/admin/events')}

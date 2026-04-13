@@ -16,6 +16,11 @@ const initialForm = {
   notes: '',
 }
 
+const handleLogout = async () => {
+  await supabase.auth.signOut()
+  window.location.href = '/admin'
+}
+
 export default function EventsAdmin() {
   const [events, setEvents] = useState([])
   const [form, setForm] = useState(initialForm)
@@ -177,6 +182,11 @@ export default function EventsAdmin() {
             <button style={styles.secondaryBtn} onClick={fetchEvents}>
               Neu laden
             </button>
+
+            <button style={styles.secondaryBtn} onClick={handleLogout}>
+              Logout
+            </button>
+
             <button
               style={styles.primaryBtn}
               onClick={() => (window.location.href = '/admin')}
