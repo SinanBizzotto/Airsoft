@@ -393,3 +393,31 @@
   font-size: 14px;
   margin: 4px 0 0;
 }
+
+.event-registration-box {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.event-registration-box input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: #fff;
+  outline: none;
+}
+
+.event-join-success {
+  color: #86efac;
+  font-size: 14px;
+  margin: 4px 0 0;
+}
+
+.event-join-error {
+  color: #fca5a5;
+  font-size: 14px;
+  margin: 4px 0 0;
+}

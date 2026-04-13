@@ -66,6 +66,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [selectedImage, setSelectedImage] = useState(null)
+  const [submitState, setSubmitState] = useState('idle')
   const [eventJoinData, setEventJoinData] = useState({})
   const [eventJoinState, setEventJoinState] = useState({})
   const [liveEvents, setLiveEvents] = useState([])
@@ -148,66 +149,6 @@ function App() {
     event.preventDefault()
     setSubmitState('loading')
 
-    const handleEventJoinChange = (eventId, field, value) => {
-      setEventJoinData((prev) => ({
-        ...prev,
-        [eventId]: {
-          ...prev[eventId],
-          [field]: value,
-        },
-      }))
-    }
-
-    const handleEventJoin = async (eventId) => {
-      const data = eventJoinData[eventId]
-
-      if (!data?.name || !data?.discord_name) {
-        setEventJoinState((prev) => ({
-          ...prev,
-          [eventId]: 'error',
-        }))
-        return
-      }
-
-      setEventJoinState((prev) => ({
-        ...prev,
-        [eventId]: 'loading',
-      }))
-
-      try {
-        const { error } = await supabase.from('event_registrations').insert([
-          {
-            event_id: eventId,
-            name: data.name,
-            discord_name: data.discord_name,
-            role: data.role || '',
-          },
-        ])
-
-        if (error) throw error
-
-        setEventJoinState((prev) => ({
-          ...prev,
-          [eventId]: 'success',
-        }))
-
-        setEventJoinData((prev) => ({
-          ...prev,
-          [eventId]: {
-            name: '',
-            discord_name: '',
-            role: '',
-          },
-        }))
-      } catch (error) {
-        console.error(error)
-        setEventJoinState((prev) => ({
-          ...prev,
-          [eventId]: 'error',
-        }))
-      }
-    }
-
     try {
       const { error } = await supabase.from('applications').insert([
         {
@@ -237,6 +178,66 @@ function App() {
     } catch (error) {
       console.error(error)
       setSubmitState('error')
+    }
+  }
+
+  const handleEventJoinChange = (eventId, field, value) => {
+    setEventJoinData((prev) => ({
+      ...prev,
+      [eventId]: {
+        ...prev[eventId],
+        [field]: value,
+      },
+    }))
+  }
+
+  const handleEventJoin = async (eventId) => {
+    const data = eventJoinData[eventId]
+
+    if (!data?.name || !data?.discord_name) {
+      setEventJoinState((prev) => ({
+        ...prev,
+        [eventId]: 'error',
+      }))
+      return
+    }
+
+    setEventJoinState((prev) => ({
+      ...prev,
+      [eventId]: 'loading',
+    }))
+
+    try {
+      const { error } = await supabase.from('event_registrations').insert([
+        {
+          event_id: eventId,
+          name: data.name,
+          discord_name: data.discord_name,
+          role: data.role || '',
+        },
+      ])
+
+      if (error) throw error
+
+      setEventJoinState((prev) => ({
+        ...prev,
+        [eventId]: 'success',
+      }))
+
+      setEventJoinData((prev) => ({
+        ...prev,
+        [eventId]: {
+          name: '',
+          discord_name: '',
+          role: '',
+        },
+      }))
+    } catch (error) {
+      console.error(error)
+      setEventJoinState((prev) => ({
+        ...prev,
+        [eventId]: 'error',
+      }))
     }
   }
 
@@ -743,10 +744,51 @@ function App() {
                       {event.description || 'Kein Beschreibungstext vorhanden.'}
                     </p>
 
-                    <div className="event-live-footer">
-                      <a href="#join" className="btn btn-primary">
-                        Jetzt bewerben
-                      </a>
+                    <div className="event-registration-box">
+                      <input
+                        type="text"
+                        placeholder="Name"
+                        value={eventJoinData[event.id]?.name || ''}
+                        onChange={(e) =>
+                          handleEventJoinChange(event.id, 'name', e.target.value)
+                        }
+                      />
+
+                      <input
+                        type="text"
+                        placeholder="Discord"
+                        value={eventJoinData[event.id]?.discord_name || ''}
+                        onChange={(e) =>
+                          handleEventJoinChange(event.id, 'discord_name', e.target.value)
+                        }
+                      />
+
+                      <input
+                        type="text"
+                        placeholder="Rolle (optional)"
+                        value={eventJoinData[event.id]?.role || ''}
+                        onChange={(e) =>
+                          handleEventJoinChange(event.id, 'role', e.target.value)
+                        }
+                      />
+
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        onClick={() => handleEventJoin(event.id)}
+                      >
+                        {eventJoinState[event.id] === 'loading'
+                          ? 'Wird gespeichert...'
+                          : 'Für Event anmelden'}
+                      </button>
+
+                      {eventJoinState[event.id] === 'success' && (
+                        <p className="event-join-success">Erfolgreich angemeldet.</p>
+                      )}
+
+                      {eventJoinState[event.id] === 'error' && (
+                        <p className="event-join-error">Bitte Name und Discord eintragen.</p>
+                      )}
                     </div>
                   </article>
                 ))}
@@ -1017,52 +1059,6 @@ function App() {
           </div>
         </div>
       )}
-
-      <div className="event-registration-box">
-        <input
-          type="text"
-          placeholder="Name"
-          value={eventJoinData[event.id]?.name || ''}
-          onChange={(e) =>
-            handleEventJoinChange(event.id, 'name', e.target.value)
-          }
-        />
-
-        <input
-          type="text"
-          placeholder="Discord"
-          value={eventJoinData[event.id]?.discord_name || ''}
-          onChange={(e) =>
-            handleEventJoinChange(event.id, 'discord_name', e.target.value)
-          }
-        />
-
-        <input
-          type="text"
-          placeholder="Rolle (optional)"
-          value={eventJoinData[event.id]?.role || ''}
-          onChange={(e) =>
-            handleEventJoinChange(event.id, 'role', e.target.value)
-          }
-        />
-
-        <button
-          className="btn btn-primary"
-          onClick={() => handleEventJoin(event.id)}
-        >
-          {eventJoinState[event.id] === 'loading'
-            ? 'Wird gespeichert...'
-            : 'Für Event anmelden'}
-        </button>
-
-        {eventJoinState[event.id] === 'success' && (
-          <p className="event-join-success">Erfolgreich angemeldet.</p>
-        )}
-
-        {eventJoinState[event.id] === 'error' && (
-          <p className="event-join-error">Bitte Name und Discord eintragen.</p>
-        )}
-      </div>
 
       <footer className="footer">
         <div className="container footer-inner">
