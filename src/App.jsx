@@ -319,6 +319,16 @@ function App() {
             <a href="#media" onClick={closeMenu}>Media</a>
             <a href="#faq" onClick={closeMenu}>FAQ</a>
             <a href="#join" className="nav-cta" onClick={closeMenu}>Bewerbung</a>
+            <a href="/admin" onClick={closeMenu}
+              style={{
+                color: '#fff',
+                textDecoration: 'none',
+                opacity: 0.8,
+                fontSize: '14px',
+              }}
+            >
+              {session ? 'Dashboard' : 'Login'}
+            </a>
           </nav>
         </div>
       </header>
