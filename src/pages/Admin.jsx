@@ -172,6 +172,24 @@ export default function Admin() {
     window.location.href = '/admin'
   }
 
+  const updateStatus = async (id, status) => {
+    const { error } = await supabase
+      .from('applications')
+      .update({
+        status,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+
+    if (error) {
+      console.error(error)
+      alert('Status konnte nicht gespeichert werden.')
+      return
+    }
+
+    fetchApplications()
+  }
+
   return (
     <div style={styles.page}>
       <style>{`
@@ -382,6 +400,47 @@ export default function Admin() {
                     <div style={styles.wideGrid}>
                       <WideInfoBox label="Gear / Tarnung" value={app.camo || '-'} />
                       <WideInfoBox label="Motivation" value={app.motivation || '-'} />
+                    </div>
+
+                    <div style={styles.sectionBlock}>
+                      <label style={styles.label}>Schnellstatus</label>
+                      <div style={styles.quickStatusRow}>
+                        <button
+                          style={styles.quickBtn}
+                          onClick={() => updateStatus(app.id, 'neu')}
+                          disabled={isSaving}
+                        >
+                          Neu
+                        </button>
+                        <button
+                          style={styles.quickBtn}
+                          onClick={() => updateStatus(app.id, 'gespräch')}
+                          disabled={isSaving}
+                        >
+                          Gespräch
+                        </button>
+                        <button
+                          style={styles.quickBtn}
+                          onClick={() => updateStatus(app.id, 'tryout')}
+                          disabled={isSaving}
+                        >
+                          Tryout
+                        </button>
+                        <button
+                          style={styles.quickBtnAccept}
+                          onClick={() => updateStatus(app.id, 'aufgenommen')}
+                          disabled={isSaving}
+                        >
+                          Angenommen
+                        </button>
+                        <button
+                          style={styles.quickBtnReject}
+                          onClick={() => updateStatus(app.id, 'abgelehnt')}
+                          disabled={isSaving}
+                        >
+                          Abgelehnt
+                        </button>
+                      </div>
                     </div>
 
                     <div style={styles.sectionBlock}>
@@ -749,6 +808,38 @@ const styles = {
     margin: '6px 0 0 0',
     fontSize: '12px',
     color: '#8f97a7',
+  },
+  quickStatusRow: {
+    display: 'flex',
+    gap: '8px',
+    flexWrap: 'wrap',
+  },
+  quickBtn: {
+    padding: '10px 12px',
+    borderRadius: '10px',
+    border: '1px solid rgba(255,255,255,0.10)',
+    background: 'rgba(255,255,255,0.04)',
+    color: '#fff',
+    cursor: 'pointer',
+    fontWeight: 700,
+  },
+  quickBtnAccept: {
+    padding: '10px 12px',
+    borderRadius: '10px',
+    border: '1px solid rgba(34,197,94,0.35)',
+    background: 'rgba(34,197,94,0.16)',
+    color: '#86efac',
+    cursor: 'pointer',
+    fontWeight: 700,
+  },
+  quickBtnReject: {
+    padding: '10px 12px',
+    borderRadius: '10px',
+    border: '1px solid rgba(239,68,68,0.35)',
+    background: 'rgba(239,68,68,0.16)',
+    color: '#fca5a5',
+    cursor: 'pointer',
+    fontWeight: 700,
   },
   actionsRow: {
     display: 'flex',
