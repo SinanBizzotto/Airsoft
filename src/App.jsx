@@ -621,41 +621,73 @@ function App() {
                 <p>Aktuell sind keine kommenden Events eingetragen.</p>
               </div>
             ) : (
-              <div className="card-grid">
+              <div className="events-live-grid">
                 {liveEvents.map((event) => (
-                  <div className="player-card event-card" key={event.id}>
-                    <div className="player-icon">
-                      {event.title ? event.title.charAt(0).toUpperCase() : 'E'}
+                  <article className="event-live-card" key={event.id}>
+                    <div className="event-live-topline"></div>
+
+                    <div className="event-live-head">
+                      <div className="event-live-icon">
+                        {event.title ? event.title.charAt(0).toUpperCase() : 'E'}
+                      </div>
+
+                      <div className="event-live-title-wrap">
+                        <span className="event-live-type">
+                          {event.event_type || 'event'}
+                        </span>
+                        <h3>{event.title}</h3>
+                      </div>
+
+                      <span className={`event-live-status event-status-${event.status || 'geplant'}`}>
+                        {event.status || 'geplant'}
+                      </span>
                     </div>
 
-                    <h3>{event.title}</h3>
+                    <div className="event-live-meta-grid">
+                      <div className="event-live-meta">
+                        <span>Datum</span>
+                        <strong>
+                          {event.event_date
+                            ? new Date(event.event_date).toLocaleString('de-CH')
+                            : '-'}
+                        </strong>
+                      </div>
 
-                    <p>
-                      <strong>Typ:</strong> {event.event_type || '-'}
+                      <div className="event-live-meta">
+                        <span>Ort</span>
+                        <strong>{event.location || '-'}</strong>
+                      </div>
+
+                      <div className="event-live-meta">
+                        <span>Field</span>
+                        <strong>{event.field_name || '-'}</strong>
+                      </div>
+
+                      <div className="event-live-meta">
+                        <span>Teilnehmer</span>
+                        <strong>{event.max_participants ?? '-'}</strong>
+                      </div>
+                    </div>
+
+                    <div className="event-live-tags">
+                      <span className="event-live-tag">
+                        Tarnung: {event.required_camo || '-'}
+                      </span>
+                      <span className="event-live-tag">
+                        Gear: {event.required_gear || '-'}
+                      </span>
+                    </div>
+
+                    <p className="event-live-description">
+                      {event.description || 'Kein Beschreibungstext vorhanden.'}
                     </p>
-                    <p>
-                      <strong>Datum:</strong>{' '}
-                      {event.event_date
-                        ? new Date(event.event_date).toLocaleString('de-CH')
-                        : '-'}
-                    </p>
-                    <p>
-                      <strong>Ort:</strong> {event.location || '-'}
-                    </p>
-                    <p>
-                      <strong>Field:</strong> {event.field_name || '-'}
-                    </p>
-                    <p>
-                      <strong>Status:</strong> {event.status || '-'}
-                    </p>
-                    <p>
-                      <strong>Tarnung:</strong> {event.required_camo || '-'}
-                    </p>
-                    <p>
-                      <strong>Teilnehmer:</strong> {event.max_participants ?? '-'}
-                    </p>
-                    <p>{event.description || 'Kein Beschreibungstext vorhanden.'}</p>
-                  </div>
+
+                    <div className="event-live-footer">
+                      <a href="#join" className="btn btn-primary">
+                        Jetzt bewerben
+                      </a>
+                    </div>
+                  </article>
                 ))}
               </div>
             )}
