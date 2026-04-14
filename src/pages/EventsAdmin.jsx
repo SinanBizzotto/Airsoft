@@ -208,7 +208,8 @@ export default function EventsAdmin() {
       return
     }
 
-    setRegistrations((prev) => prev.filter((registration) => registration.id !== registrationId))
+    await fetchRegistrations()
+    await fetchEvents()
     setDeletingRegistrationId(null)
   }
 
@@ -234,14 +235,8 @@ export default function EventsAdmin() {
       return
     }
 
-    setRegistrations((prev) =>
-      prev.map((entry) =>
-        entry.id === registration.id
-          ? { ...entry, ...payload }
-          : entry
-      )
-    )
-
+    await fetchRegistrations()
+    await fetchEvents()
     setUpdatingRegistrationId(null)
   }
 
@@ -485,9 +480,13 @@ export default function EventsAdmin() {
               <div style={styles.eventList}>
                 {events.map((event) => {
                   const eventRegistrations = groupedRegistrations[event.id] || []
+
                   const activeParticipants = eventRegistrations.filter(
-                    (entry) => entry.registration_status !== 'abgesagt' && entry.registration_status !== 'warteliste'
+                    (entry) =>
+                      entry.registration_status !== 'abgesagt' &&
+                      entry.registration_status !== 'warteliste'
                   )
+
                   const waitlistParticipants = eventRegistrations.filter(
                     (entry) => entry.registration_status === 'warteliste'
                   )
@@ -498,7 +497,10 @@ export default function EventsAdmin() {
                         <div>
                           <h3 style={styles.eventTitle}>{event.title}</h3>
                           <p style={styles.meta}>
-                            {event.event_type} · {event.event_date ? new Date(event.event_date).toLocaleString('de-CH') : '-'}
+                            {event.event_type} ·{' '}
+                            {event.event_date
+                              ? new Date(event.event_date).toLocaleString('de-CH')
+                              : '-'}
                           </p>
                         </div>
 
