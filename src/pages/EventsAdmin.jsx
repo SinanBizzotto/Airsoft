@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import teamLogo from '../assets/logo/AS BS 04.png'
 
@@ -18,18 +18,24 @@ const initialForm = {
 
 export default function EventsAdmin() {
   const [events, setEvents] = useState([])
+  const [registrations, setRegistrations] = useState([])
   const [form, setForm] = useState(initialForm)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  const [deletingRegistrationId, setDeletingRegistrationId] = useState(null)
 
   useEffect(() => {
-    fetchEvents()
+    fetchAll()
   }, [])
 
-  const fetchEvents = async () => {
+  const fetchAll = async () => {
     setLoading(true)
+    await Promise.all([fetchEvents(), fetchRegistrations()])
+    setLoading(false)
+  }
 
+  const fetchEvents = async () => {
     const { data, error } = await supabase
       .from('events')
       .select('*')
@@ -38,12 +44,39 @@ export default function EventsAdmin() {
     if (error) {
       console.error(error)
       alert('Events konnten nicht geladen werden.')
-    } else {
-      setEvents(data || [])
+      return
     }
 
-    setLoading(false)
+    setEvents(data || [])
   }
+
+  const fetchRegistrations = async () => {
+    const { data, error } = await supabase
+      .from('event_registrations')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error(error)
+      alert('Anmeldungen konnten nicht geladen werden.')
+      return
+    }
+
+    setRegistrations(data || [])
+  }
+
+  const groupedRegistrations = useMemo(() => {
+    const grouped = {}
+
+    for (const registration of registrations) {
+      if (!grouped[registration.event_id]) {
+        grouped[registration.event_id] = []
+      }
+      grouped[registration.event_id].push(registration)
+    }
+
+    return grouped
+  }, [registrations])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -80,6 +113,7 @@ export default function EventsAdmin() {
       required_gear: event.required_gear || '',
       notes: event.notes || '',
     })
+
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -90,7 +124,7 @@ export default function EventsAdmin() {
     const payload = {
       title: form.title,
       event_type: form.event_type,
-      event_date: form.event_date,
+      event_date: form.event_date || null,
       location: form.location,
       field_name: form.field_name,
       description: form.description,
@@ -150,6 +184,29 @@ export default function EventsAdmin() {
     }
 
     setEvents((prev) => prev.filter((event) => event.id !== id))
+    setRegistrations((prev) => prev.filter((registration) => registration.event_id !== id))
+  }
+
+  const deleteRegistration = async (registrationId) => {
+    const confirmed = window.confirm('Anmeldung wirklich löschen?')
+    if (!confirmed) return
+
+    setDeletingRegistrationId(registrationId)
+
+    const { error } = await supabase
+      .from('event_registrations')
+      .delete()
+      .eq('id', registrationId)
+
+    if (error) {
+      console.error(error)
+      alert('Anmeldung konnte nicht gelöscht werden.')
+      setDeletingRegistrationId(null)
+      return
+    }
+
+    setRegistrations((prev) => prev.filter((registration) => registration.id !== registrationId))
+    setDeletingRegistrationId(null)
   }
 
   return (
@@ -223,12 +280,12 @@ export default function EventsAdmin() {
             <h1 style={styles.title}>Event Verwaltung</h1>
             <p style={styles.subtitle}>
               Trainings, Spieltage, Tryouts und interne Termine zentral erstellen,
-              bearbeiten und verwalten.
+              bearbeiten und inklusive Anmeldungen verwalten.
             </p>
           </div>
 
           <div style={styles.topActions}>
-            <button style={styles.secondaryBtn} onClick={fetchEvents}>
+            <button style={styles.secondaryBtn} onClick={fetchAll}>
               Neu laden
             </button>
             <button style={styles.secondaryBtn} onClick={handleLogout}>
@@ -390,55 +447,99 @@ export default function EventsAdmin() {
               <p>Keine Events vorhanden.</p>
             ) : (
               <div style={styles.eventList}>
-                {events.map((event) => (
-                  <div key={event.id} style={styles.eventItem}>
-                    <div style={styles.eventHeader}>
-                      <div>
-                        <h3 style={styles.eventTitle}>{event.title}</h3>
-                        <p style={styles.meta}>
-                          {event.event_type} · {new Date(event.event_date).toLocaleString('de-CH')}
-                        </p>
+                {events.map((event) => {
+                  const eventRegistrations = groupedRegistrations[event.id] || []
+                  const currentCount = eventRegistrations.length
+                  const maxCount = event.max_participants ?? '-'
+
+                  return (
+                    <div key={event.id} style={styles.eventItem}>
+                      <div style={styles.eventHeader}>
+                        <div>
+                          <h3 style={styles.eventTitle}>{event.title}</h3>
+                          <p style={styles.meta}>
+                            {event.event_type} · {event.event_date ? new Date(event.event_date).toLocaleString('de-CH') : '-'}
+                          </p>
+                        </div>
+
+                        <div style={styles.eventButtons}>
+                          <button
+                            style={styles.secondaryBtn}
+                            onClick={() => handleEdit(event)}
+                          >
+                            Bearbeiten
+                          </button>
+                          <button
+                            style={styles.deleteBtn}
+                            onClick={() => deleteEvent(event.id)}
+                          >
+                            Löschen
+                          </button>
+                        </div>
                       </div>
 
-                      <div style={styles.eventButtons}>
-                        <button
-                          style={styles.secondaryBtn}
-                          onClick={() => handleEdit(event)}
-                        >
-                          Bearbeiten
-                        </button>
-                        <button
-                          style={styles.deleteBtn}
-                          onClick={() => deleteEvent(event.id)}
-                        >
-                          Löschen
-                        </button>
+                      <div style={styles.infoGrid}>
+                        <Info label="Status" value={event.status} />
+                        <Info label="Ort" value={event.location || '-'} />
+                        <Info label="Field" value={event.field_name || '-'} />
+                        <Info label="Max Teilnehmer" value={maxCount} />
+                      </div>
+
+                      <div style={styles.infoGrid}>
+                        <Info label="Tarnung" value={event.required_camo || '-'} />
+                        <Info label="Gear" value={event.required_gear || '-'} />
+                        <Info label="Anmeldungen" value={`${currentCount}${event.max_participants ? ` / ${event.max_participants}` : ''}`} />
+                      </div>
+
+                      <div style={styles.block}>
+                        <p style={styles.label}>Beschreibung</p>
+                        <p style={styles.value}>{event.description || '-'}</p>
+                      </div>
+
+                      <div style={styles.block}>
+                        <p style={styles.label}>Interne Notizen</p>
+                        <p style={styles.value}>{event.notes || '-'}</p>
+                      </div>
+
+                      <div style={styles.block}>
+                        <p style={styles.label}>Teilnehmerliste</p>
+
+                        {eventRegistrations.length === 0 ? (
+                          <p style={styles.value}>Noch keine Anmeldungen.</p>
+                        ) : (
+                          <div style={styles.registrationList}>
+                            {eventRegistrations.map((registration) => (
+                              <div key={registration.id} style={styles.registrationItem}>
+                                <div>
+                                  <p style={styles.registrationName}>
+                                    {registration.name}
+                                  </p>
+                                  <p style={styles.registrationMeta}>
+                                    Discord: {registration.discord_name || '-'}
+                                  </p>
+                                  <p style={styles.registrationMeta}>
+                                    Rolle: {registration.role || '-'}
+                                  </p>
+                                  <p style={styles.registrationMeta}>
+                                    Angemeldet: {registration.created_at ? new Date(registration.created_at).toLocaleString('de-CH') : '-'}
+                                  </p>
+                                </div>
+
+                                <button
+                                  style={styles.deleteBtnSmall}
+                                  disabled={deletingRegistrationId === registration.id}
+                                  onClick={() => deleteRegistration(registration.id)}
+                                >
+                                  {deletingRegistrationId === registration.id ? 'Löscht...' : 'Entfernen'}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
-
-                    <div style={styles.infoGrid}>
-                      <Info label="Status" value={event.status} />
-                      <Info label="Ort" value={event.location || '-'} />
-                      <Info label="Field" value={event.field_name || '-'} />
-                      <Info label="Max Teilnehmer" value={event.max_participants ?? '-'} />
-                    </div>
-
-                    <div style={styles.infoGrid}>
-                      <Info label="Tarnung" value={event.required_camo || '-'} />
-                      <Info label="Gear" value={event.required_gear || '-'} />
-                    </div>
-
-                    <div style={styles.block}>
-                      <p style={styles.label}>Beschreibung</p>
-                      <p style={styles.value}>{event.description || '-'}</p>
-                    </div>
-
-                    <div style={styles.block}>
-                      <p style={styles.label}>Interne Notizen</p>
-                      <p style={styles.value}>{event.notes || '-'}</p>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -641,6 +742,31 @@ const styles = {
     lineHeight: 1.5,
     whiteSpace: 'pre-wrap',
   },
+  registrationList: {
+    display: 'grid',
+    gap: '10px',
+  },
+  registrationItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '12px',
+    alignItems: 'flex-start',
+    padding: '12px',
+    borderRadius: '12px',
+    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(255,255,255,0.06)',
+  },
+  registrationName: {
+    margin: '0 0 6px 0',
+    color: '#fff',
+    fontWeight: 700,
+  },
+  registrationMeta: {
+    margin: '0 0 4px 0',
+    color: '#b8bcc7',
+    fontSize: '13px',
+    lineHeight: 1.4,
+  },
   deleteBtn: {
     padding: '10px 14px',
     borderRadius: '12px',
@@ -649,5 +775,15 @@ const styles = {
     color: '#fecaca',
     cursor: 'pointer',
     fontWeight: 700,
+  },
+  deleteBtnSmall: {
+    padding: '8px 12px',
+    borderRadius: '10px',
+    border: '1px solid rgba(239,68,68,0.35)',
+    background: 'rgba(239,68,68,0.16)',
+    color: '#fecaca',
+    cursor: 'pointer',
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
   },
 }
