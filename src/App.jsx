@@ -10,6 +10,7 @@ import { supabase } from './lib/supabase'
 import Admin from './pages/Admin'
 import EventsAdmin from './pages/EventsAdmin'
 import Login from './pages/Login'
+import './App.css'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -393,11 +394,7 @@ function App() {
             <a href="#media" onClick={closeMenu}>Media</a>
             <a href="#faq" onClick={closeMenu}>FAQ</a>
             <a href="#join" className="nav-cta" onClick={closeMenu}>Bewerbung</a>
-            <a
-              href="/admin"
-              className="nav-login"
-              onClick={closeMenu}
-            >
+            <a href="/admin" className="nav-login" onClick={closeMenu}>
               <span>{session ? 'Dashboard' : 'Admin Login'}</span>
             </a>
           </nav>
@@ -424,12 +421,8 @@ function App() {
               </p>
 
               <div className="hero-buttons">
-                <a href="#team" className="btn btn-primary">
-                  Zum Team
-                </a>
-                <a href="#join" className="btn btn-secondary">
-                  Aufnahme anfragen
-                </a>
+                <a href="#team" className="btn btn-primary">Zum Team</a>
+                <a href="#join" className="btn btn-secondary">Aufnahme anfragen</a>
               </div>
 
               <div className="hero-stats">

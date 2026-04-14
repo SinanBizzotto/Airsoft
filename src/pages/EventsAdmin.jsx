@@ -450,7 +450,6 @@ export default function EventsAdmin() {
                 {events.map((event) => {
                   const eventRegistrations = groupedRegistrations[event.id] || []
                   const currentCount = eventRegistrations.length
-                  const maxCount = event.max_participants ?? '-'
 
                   return (
                     <div key={event.id} style={styles.eventItem}>
@@ -482,13 +481,16 @@ export default function EventsAdmin() {
                         <Info label="Status" value={event.status} />
                         <Info label="Ort" value={event.location || '-'} />
                         <Info label="Field" value={event.field_name || '-'} />
-                        <Info label="Max Teilnehmer" value={maxCount} />
+                        <Info label="Max Teilnehmer" value={event.max_participants ?? '-'} />
                       </div>
 
                       <div style={styles.infoGrid}>
                         <Info label="Tarnung" value={event.required_camo || '-'} />
                         <Info label="Gear" value={event.required_gear || '-'} />
-                        <Info label="Anmeldungen" value={`${currentCount}${event.max_participants ? ` / ${event.max_participants}` : ''}`} />
+                        <Info
+                          label="Anmeldungen"
+                          value={`${currentCount}${event.max_participants ? ` / ${event.max_participants}` : ''}`}
+                        />
                       </div>
 
                       <div style={styles.block}>
@@ -501,37 +503,55 @@ export default function EventsAdmin() {
                         <p style={styles.value}>{event.notes || '-'}</p>
                       </div>
 
-                      <div style={styles.block}>
-                        <p style={styles.label}>Teilnehmerliste</p>
+                      <div style={styles.participantsSection}>
+                        <div style={styles.participantsHeader}>
+                          <div>
+                            <p style={styles.label}>Teilnehmerliste</p>
+                            <h4 style={styles.participantsTitle}>
+                              {currentCount} Teilnehmer
+                            </h4>
+                          </div>
+
+                          <div style={styles.participantCountBadge}>
+                            {currentCount}
+                            {event.max_participants ? ` / ${event.max_participants}` : ''}
+                          </div>
+                        </div>
 
                         {eventRegistrations.length === 0 ? (
-                          <p style={styles.value}>Noch keine Anmeldungen.</p>
+                          <div style={styles.emptyParticipants}>
+                            Noch keine Anmeldungen.
+                          </div>
                         ) : (
-                          <div style={styles.registrationList}>
+                          <div style={styles.registrationGrid}>
                             {eventRegistrations.map((registration) => (
-                              <div key={registration.id} style={styles.registrationItem}>
-                                <div>
-                                  <p style={styles.registrationName}>
-                                    {registration.name}
-                                  </p>
-                                  <p style={styles.registrationMeta}>
-                                    Discord: {registration.discord_name || '-'}
-                                  </p>
-                                  <p style={styles.registrationMeta}>
-                                    Rolle: {registration.role || '-'}
-                                  </p>
-                                  <p style={styles.registrationMeta}>
-                                    Angemeldet: {registration.created_at ? new Date(registration.created_at).toLocaleString('de-CH') : '-'}
-                                  </p>
-                                </div>
+                              <div key={registration.id} style={styles.registrationCard}>
+                                <div style={styles.registrationCardTop}>
+                                  <div>
+                                    <p style={styles.registrationName}>
+                                      {registration.name}
+                                    </p>
+                                    <p style={styles.registrationSub}>
+                                      Discord: {registration.discord_name || '-'}
+                                    </p>
+                                    <p style={styles.registrationSub}>
+                                      Rolle: {registration.role || '-'}
+                                    </p>
+                                    <p style={styles.registrationDate}>
+                                      {registration.created_at
+                                        ? new Date(registration.created_at).toLocaleString('de-CH')
+                                        : '-'}
+                                    </p>
+                                  </div>
 
-                                <button
-                                  style={styles.deleteBtnSmall}
-                                  disabled={deletingRegistrationId === registration.id}
-                                  onClick={() => deleteRegistration(registration.id)}
-                                >
-                                  {deletingRegistrationId === registration.id ? 'Löscht...' : 'Entfernen'}
-                                </button>
+                                  <button
+                                    style={styles.deleteBtnSmall}
+                                    disabled={deletingRegistrationId === registration.id}
+                                    onClick={() => deleteRegistration(registration.id)}
+                                  >
+                                    {deletingRegistrationId === registration.id ? 'Löscht...' : 'Entfernen'}
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -685,7 +705,7 @@ const styles = {
   },
   eventItem: {
     padding: '18px',
-    borderRadius: '16px',
+    borderRadius: '18px',
     border: '1px solid rgba(255,255,255,0.08)',
     background: 'rgba(0,0,0,0.22)',
   },
@@ -704,6 +724,7 @@ const styles = {
   },
   eventTitle: {
     margin: '0 0 6px 0',
+    fontSize: '22px',
   },
   meta: {
     margin: 0,
@@ -742,30 +763,74 @@ const styles = {
     lineHeight: 1.5,
     whiteSpace: 'pre-wrap',
   },
-  registrationList: {
-    display: 'grid',
-    gap: '10px',
+  participantsSection: {
+    marginTop: '14px',
+    padding: '14px',
+    borderRadius: '14px',
+    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(255,255,255,0.06)',
   },
-  registrationItem: {
+  participantsHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '14px',
+    flexWrap: 'wrap',
+  },
+  participantsTitle: {
+    margin: 0,
+    fontSize: '20px',
+    color: '#fff',
+  },
+  participantCountBadge: {
+    padding: '8px 12px',
+    borderRadius: '999px',
+    background: 'rgba(179,18,23,0.18)',
+    border: '1px solid rgba(179,18,23,0.35)',
+    color: '#fff',
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+  },
+  emptyParticipants: {
+    padding: '14px',
+    borderRadius: '12px',
+    background: 'rgba(255,255,255,0.03)',
+    color: '#b8bcc7',
+  },
+  registrationGrid: {
+    display: 'grid',
+    gap: '12px',
+  },
+  registrationCard: {
+    padding: '14px',
+    borderRadius: '14px',
+    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(255,255,255,0.06)',
+  },
+  registrationCardTop: {
     display: 'flex',
     justifyContent: 'space-between',
     gap: '12px',
     alignItems: 'flex-start',
-    padding: '12px',
-    borderRadius: '12px',
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.06)',
+    flexWrap: 'wrap',
   },
   registrationName: {
     margin: '0 0 6px 0',
     color: '#fff',
     fontWeight: 700,
+    fontSize: '16px',
   },
-  registrationMeta: {
+  registrationSub: {
     margin: '0 0 4px 0',
     color: '#b8bcc7',
     fontSize: '13px',
     lineHeight: 1.4,
+  },
+  registrationDate: {
+    margin: '6px 0 0 0',
+    color: '#8f97a7',
+    fontSize: '12px',
   },
   deleteBtn: {
     padding: '10px 14px',
