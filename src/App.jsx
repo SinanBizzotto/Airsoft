@@ -121,7 +121,9 @@ function App() {
       .select(`
         *,
         event_registrations (
-          id
+          id,
+          registration_status,
+          waitlist_position
         )
       `)
       .gte('event_date', now)
@@ -133,7 +135,17 @@ function App() {
       setLiveEvents([])
     } else {
       const normalizedEvents = (data || []).map((event) => {
-        const registrationsCount = event.event_registrations?.length || 0
+        const activeRegistrations = (event.event_registrations || []).filter(
+          (entry) => entry.registration_status !== 'abgesagt' && entry.registration_status !== 'warteliste'
+        )
+
+        const waitlistRegistrations = (event.event_registrations || []).filter(
+          (entry) => entry.registration_status === 'warteliste'
+        )
+
+        const registrationsCount = activeRegistrations.length
+        const waitlistCount = waitlistRegistrations.length
+
         const maxParticipants =
           typeof event.max_participants === 'number'
             ? event.max_participants
@@ -152,6 +164,7 @@ function App() {
         return {
           ...event,
           registrationsCount,
+          waitlistCount,
           freeSlots,
           computedStatus,
         }
@@ -248,7 +261,9 @@ function App() {
           max_participants,
           status,
           event_registrations (
-            id
+            id,
+            registration_status,
+            waitlist_position
           )
         `)
         .eq('id', eventId)
@@ -256,46 +271,46 @@ function App() {
 
       if (freshEventError) throw freshEventError
 
-      const currentRegistrations = freshEvent.event_registrations?.length || 0
+      const registrations = freshEvent.event_registrations || []
+
+      const activeRegistrations = registrations.filter(
+        (entry) => entry.registration_status !== 'abgesagt' && entry.registration_status !== 'warteliste'
+      )
+
+      const waitlistRegistrations = registrations.filter(
+        (entry) => entry.registration_status === 'warteliste'
+      )
+
+      const currentRegistrations = activeRegistrations.length
+      const currentWaitlist = waitlistRegistrations.length
+
       const maxParticipants =
         typeof freshEvent.max_participants === 'number'
           ? freshEvent.max_participants
           : null
 
-      if (
+      const isFull =
         typeof maxParticipants === 'number' &&
         currentRegistrations >= maxParticipants
-      ) {
-        await supabase
-          .from('events')
-          .update({ status: 'voll' })
-          .eq('id', eventId)
 
-        setEventJoinState((prev) => ({
-          ...prev,
-          [eventId]: 'full',
-        }))
-
-        await fetchLiveEvents()
-        return
+      const registrationPayload = {
+        event_id: eventId,
+        name: data.name,
+        discord_name: data.discord_name,
+        role: data.role || '',
+        registration_status: isFull ? 'warteliste' : 'angemeldet',
+        waitlist_position: isFull ? currentWaitlist + 1 : null,
       }
 
-      const { error } = await supabase.from('event_registrations').insert([
-        {
-          event_id: eventId,
-          name: data.name,
-          discord_name: data.discord_name,
-          role: data.role || '',
-        },
-      ])
+      const { error } = await supabase
+        .from('event_registrations')
+        .insert([registrationPayload])
 
       if (error) throw error
 
-      const newCount = currentRegistrations + 1
-
       if (
         typeof maxParticipants === 'number' &&
-        newCount >= maxParticipants
+        currentRegistrations + (isFull ? 0 : 1) >= maxParticipants
       ) {
         await supabase
           .from('events')
@@ -305,7 +320,7 @@ function App() {
 
       setEventJoinState((prev) => ({
         ...prev,
-        [eventId]: 'success',
+        [eventId]: isFull ? 'waitlist' : 'success',
       }))
 
       setEventJoinData((prev) => ({
@@ -324,7 +339,7 @@ function App() {
       if (String(error.message).includes('EVENT_FULL')) {
         setEventJoinState((prev) => ({
           ...prev,
-          [eventId]: 'full',
+          [eventId]: 'waitlist',
         }))
       } else {
         setEventJoinState((prev) => ({
@@ -835,10 +850,8 @@ function App() {
                       </div>
 
                       <div className="event-live-meta">
-                        <span>Anmeldung</span>
-                        <strong>
-                          {event.computedStatus === 'voll' ? 'geschlossen' : 'offen'}
-                        </strong>
+                        <span>Warteliste</span>
+                        <strong>{event.waitlistCount || 0}</strong>
                       </div>
                     </div>
 
@@ -887,12 +900,11 @@ function App() {
                         className="btn btn-primary"
                         type="button"
                         onClick={() => handleEventJoin(event)}
-                        disabled={event.computedStatus === 'voll'}
                       >
-                        {event.computedStatus === 'voll'
-                          ? 'Event voll'
-                          : eventJoinState[event.id] === 'loading'
+                        {eventJoinState[event.id] === 'loading'
                           ? 'Wird gespeichert...'
+                          : event.computedStatus === 'voll'
+                          ? 'Zur Warteliste anmelden'
                           : 'Für Event anmelden'}
                       </button>
 
@@ -900,12 +912,12 @@ function App() {
                         <p className="event-join-success">Erfolgreich angemeldet.</p>
                       )}
 
-                      {eventJoinState[event.id] === 'error' && (
-                        <p className="event-join-error">Bitte Name und Discord eintragen.</p>
+                      {eventJoinState[event.id] === 'waitlist' && (
+                        <p className="event-join-success">Event voll. Du wurdest auf die Warteliste gesetzt.</p>
                       )}
 
-                      {eventJoinState[event.id] === 'full' && (
-                        <p className="event-join-error">Dieses Event ist bereits voll.</p>
+                      {eventJoinState[event.id] === 'error' && (
+                        <p className="event-join-error">Bitte Name und Discord eintragen.</p>
                       )}
                     </div>
                   </article>

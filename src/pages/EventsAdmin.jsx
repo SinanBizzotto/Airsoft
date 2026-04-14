@@ -16,6 +16,8 @@ const initialForm = {
   notes: '',
 }
 
+const registrationStatusOptions = ['angemeldet', 'bestätigt', 'warteliste', 'abgesagt']
+
 export default function EventsAdmin() {
   const [events, setEvents] = useState([])
   const [registrations, setRegistrations] = useState([])
@@ -24,6 +26,7 @@ export default function EventsAdmin() {
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [deletingRegistrationId, setDeletingRegistrationId] = useState(null)
+  const [updatingRegistrationId, setUpdatingRegistrationId] = useState(null)
 
   useEffect(() => {
     fetchAll()
@@ -209,6 +212,39 @@ export default function EventsAdmin() {
     setDeletingRegistrationId(null)
   }
 
+  const updateRegistrationStatus = async (registration, newStatus) => {
+    setUpdatingRegistrationId(registration.id)
+
+    const payload = {
+      registration_status: newStatus,
+      confirmed_at: newStatus === 'bestätigt' ? new Date().toISOString() : null,
+      cancelled_at: newStatus === 'abgesagt' ? new Date().toISOString() : null,
+      waitlist_position: newStatus === 'warteliste' ? registration.waitlist_position || 1 : null,
+    }
+
+    const { error } = await supabase
+      .from('event_registrations')
+      .update(payload)
+      .eq('id', registration.id)
+
+    if (error) {
+      console.error(error)
+      alert('Status konnte nicht aktualisiert werden.')
+      setUpdatingRegistrationId(null)
+      return
+    }
+
+    setRegistrations((prev) =>
+      prev.map((entry) =>
+        entry.id === registration.id
+          ? { ...entry, ...payload }
+          : entry
+      )
+    )
+
+    setUpdatingRegistrationId(null)
+  }
+
   return (
     <div style={styles.page}>
       <style>{`
@@ -280,7 +316,7 @@ export default function EventsAdmin() {
             <h1 style={styles.title}>Event Verwaltung</h1>
             <p style={styles.subtitle}>
               Trainings, Spieltage, Tryouts und interne Termine zentral erstellen,
-              bearbeiten und inklusive Anmeldungen verwalten.
+              bearbeiten und inklusive Anmeldungen, Warteliste und Status verwalten.
             </p>
           </div>
 
@@ -449,7 +485,12 @@ export default function EventsAdmin() {
               <div style={styles.eventList}>
                 {events.map((event) => {
                   const eventRegistrations = groupedRegistrations[event.id] || []
-                  const currentCount = eventRegistrations.length
+                  const activeParticipants = eventRegistrations.filter(
+                    (entry) => entry.registration_status !== 'abgesagt' && entry.registration_status !== 'warteliste'
+                  )
+                  const waitlistParticipants = eventRegistrations.filter(
+                    (entry) => entry.registration_status === 'warteliste'
+                  )
 
                   return (
                     <div key={event.id} style={styles.eventItem}>
@@ -485,12 +526,10 @@ export default function EventsAdmin() {
                       </div>
 
                       <div style={styles.infoGrid}>
+                        <Info label="Aktive Teilnehmer" value={activeParticipants.length} />
+                        <Info label="Warteliste" value={waitlistParticipants.length} />
                         <Info label="Tarnung" value={event.required_camo || '-'} />
                         <Info label="Gear" value={event.required_gear || '-'} />
-                        <Info
-                          label="Anmeldungen"
-                          value={`${currentCount}${event.max_participants ? ` / ${event.max_participants}` : ''}`}
-                        />
                       </div>
 
                       <div style={styles.block}>
@@ -508,12 +547,12 @@ export default function EventsAdmin() {
                           <div>
                             <p style={styles.label}>Teilnehmerliste</p>
                             <h4 style={styles.participantsTitle}>
-                              {currentCount} Teilnehmer
+                              {activeParticipants.length} aktiv / {waitlistParticipants.length} Warteliste
                             </h4>
                           </div>
 
                           <div style={styles.participantCountBadge}>
-                            {currentCount}
+                            {activeParticipants.length}
                             {event.max_participants ? ` / ${event.max_participants}` : ''}
                           </div>
                         </div>
@@ -537,6 +576,14 @@ export default function EventsAdmin() {
                                     <p style={styles.registrationSub}>
                                       Rolle: {registration.role || '-'}
                                     </p>
+                                    <p style={styles.registrationSub}>
+                                      Status: {registration.registration_status || 'angemeldet'}
+                                    </p>
+                                    {registration.waitlist_position && (
+                                      <p style={styles.registrationSub}>
+                                        Wartelistenplatz: {registration.waitlist_position}
+                                      </p>
+                                    )}
                                     <p style={styles.registrationDate}>
                                       {registration.created_at
                                         ? new Date(registration.created_at).toLocaleString('de-CH')
@@ -551,6 +598,23 @@ export default function EventsAdmin() {
                                   >
                                     {deletingRegistrationId === registration.id ? 'Löscht...' : 'Entfernen'}
                                   </button>
+                                </div>
+
+                                <div style={styles.registrationActions}>
+                                  <select
+                                    style={styles.statusSelect}
+                                    value={registration.registration_status || 'angemeldet'}
+                                    disabled={updatingRegistrationId === registration.id}
+                                    onChange={(e) =>
+                                      updateRegistrationStatus(registration, e.target.value)
+                                    }
+                                  >
+                                    {registrationStatusOptions.map((option) => (
+                                      <option key={option} value={option}>
+                                        {option}
+                                      </option>
+                                    ))}
+                                  </select>
                                 </div>
                               </div>
                             ))}
@@ -831,6 +895,22 @@ const styles = {
     margin: '6px 0 0 0',
     color: '#8f97a7',
     fontSize: '12px',
+  },
+  registrationActions: {
+    marginTop: '12px',
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+  },
+  statusSelect: {
+    width: '100%',
+    maxWidth: '240px',
+    padding: '10px 12px',
+    borderRadius: '10px',
+    border: '1px solid rgba(255,255,255,0.10)',
+    background: 'rgba(12,14,20,0.9)',
+    color: '#fff',
+    outline: 'none',
   },
   deleteBtn: {
     padding: '10px 14px',
