@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import './App.css'
 import teamLogo from './assets/logo/AS BS 04.png'
 import gallery1 from './assets/gallery/gallery-1.jpg'
 import gallery2 from './assets/gallery/gallery-2.jpg'
@@ -10,7 +11,6 @@ import { supabase } from './lib/supabase'
 import Admin from './pages/Admin'
 import EventsAdmin from './pages/EventsAdmin'
 import Login from './pages/Login'
-import './App.css'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -118,15 +118,46 @@ function App() {
 
     const { data, error } = await supabase
       .from('events')
-      .select('*')
+      .select(`
+        *,
+        event_registrations (
+          id
+        )
+      `)
       .gte('event_date', now)
       .order('event_date', { ascending: true })
       .limit(3)
 
     if (error) {
       console.error(error)
+      setLiveEvents([])
     } else {
-      setLiveEvents(data || [])
+      const normalizedEvents = (data || []).map((event) => {
+        const registrationsCount = event.event_registrations?.length || 0
+        const maxParticipants =
+          typeof event.max_participants === 'number'
+            ? event.max_participants
+            : null
+
+        const freeSlots =
+          typeof maxParticipants === 'number'
+            ? Math.max(maxParticipants - registrationsCount, 0)
+            : null
+
+        const computedStatus =
+          typeof maxParticipants === 'number' && registrationsCount >= maxParticipants
+            ? 'voll'
+            : event.status || 'geplant'
+
+        return {
+          ...event,
+          registrationsCount,
+          freeSlots,
+          computedStatus,
+        }
+      })
+
+      setLiveEvents(normalizedEvents)
     }
 
     setEventsLoading(false)
@@ -192,7 +223,8 @@ function App() {
     }))
   }
 
-  const handleEventJoin = async (eventId) => {
+  const handleEventJoin = async (eventItem) => {
+    const eventId = eventItem.id
     const data = eventJoinData[eventId]
 
     if (!data?.name || !data?.discord_name) {
@@ -209,6 +241,45 @@ function App() {
     }))
 
     try {
+      const { data: freshEvent, error: freshEventError } = await supabase
+        .from('events')
+        .select(`
+          id,
+          max_participants,
+          status,
+          event_registrations (
+            id
+          )
+        `)
+        .eq('id', eventId)
+        .single()
+
+      if (freshEventError) throw freshEventError
+
+      const currentRegistrations = freshEvent.event_registrations?.length || 0
+      const maxParticipants =
+        typeof freshEvent.max_participants === 'number'
+          ? freshEvent.max_participants
+          : null
+
+      if (
+        typeof maxParticipants === 'number' &&
+        currentRegistrations >= maxParticipants
+      ) {
+        await supabase
+          .from('events')
+          .update({ status: 'voll' })
+          .eq('id', eventId)
+
+        setEventJoinState((prev) => ({
+          ...prev,
+          [eventId]: 'full',
+        }))
+
+        await fetchLiveEvents()
+        return
+      }
+
       const { error } = await supabase.from('event_registrations').insert([
         {
           event_id: eventId,
@@ -219,6 +290,18 @@ function App() {
       ])
 
       if (error) throw error
+
+      const newCount = currentRegistrations + 1
+
+      if (
+        typeof maxParticipants === 'number' &&
+        newCount >= maxParticipants
+      ) {
+        await supabase
+          .from('events')
+          .update({ status: 'voll' })
+          .eq('id', eventId)
+      }
 
       setEventJoinState((prev) => ({
         ...prev,
@@ -233,12 +316,24 @@ function App() {
           role: '',
         },
       }))
+
+      await fetchLiveEvents()
     } catch (error) {
       console.error(error)
-      setEventJoinState((prev) => ({
-        ...prev,
-        [eventId]: 'error',
-      }))
+
+      if (String(error.message).includes('EVENT_FULL')) {
+        setEventJoinState((prev) => ({
+          ...prev,
+          [eventId]: 'full',
+        }))
+      } else {
+        setEventJoinState((prev) => ({
+          ...prev,
+          [eventId]: 'error',
+        }))
+      }
+
+      await fetchLiveEvents()
     }
   }
 
@@ -693,8 +788,8 @@ function App() {
                         <h3>{event.title}</h3>
                       </div>
 
-                      <span className={`event-live-status event-status-${event.status || 'geplant'}`}>
-                        {event.status || 'geplant'}
+                      <span className={`event-live-status event-status-${event.computedStatus || 'geplant'}`}>
+                        {event.computedStatus || 'geplant'}
                       </span>
                     </div>
 
@@ -719,8 +814,31 @@ function App() {
                       </div>
 
                       <div className="event-live-meta">
-                        <span>Teilnehmer</span>
-                        <strong>{event.max_participants ?? '-'}</strong>
+                        <span>Belegt</span>
+                        <strong>
+                          {event.registrationsCount}
+                          {typeof event.max_participants === 'number'
+                            ? ` / ${event.max_participants}`
+                            : ''}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="event-live-meta-grid">
+                      <div className="event-live-meta">
+                        <span>Freie Plätze</span>
+                        <strong>
+                          {typeof event.freeSlots === 'number'
+                            ? event.freeSlots
+                            : 'unbegrenzt'}
+                        </strong>
+                      </div>
+
+                      <div className="event-live-meta">
+                        <span>Anmeldung</span>
+                        <strong>
+                          {event.computedStatus === 'voll' ? 'geschlossen' : 'offen'}
+                        </strong>
                       </div>
                     </div>
 
@@ -768,9 +886,12 @@ function App() {
                       <button
                         className="btn btn-primary"
                         type="button"
-                        onClick={() => handleEventJoin(event.id)}
+                        onClick={() => handleEventJoin(event)}
+                        disabled={event.computedStatus === 'voll'}
                       >
-                        {eventJoinState[event.id] === 'loading'
+                        {event.computedStatus === 'voll'
+                          ? 'Event voll'
+                          : eventJoinState[event.id] === 'loading'
                           ? 'Wird gespeichert...'
                           : 'Für Event anmelden'}
                       </button>
@@ -781,6 +902,10 @@ function App() {
 
                       {eventJoinState[event.id] === 'error' && (
                         <p className="event-join-error">Bitte Name und Discord eintragen.</p>
+                      )}
+
+                      {eventJoinState[event.id] === 'full' && (
+                        <p className="event-join-error">Dieses Event ist bereits voll.</p>
                       )}
                     </div>
                   </article>
