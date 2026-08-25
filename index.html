@@ -1,13 +1,99 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/src/assets/logo/AS BS 04.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AS BS 04</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <title>AS BS 04 — Airsoft Squad Basel | Taktisches MilSim Team</title>
+    <meta
+      name="description"
+      content="AS BS 04 ist ein taktisch orientiertes Airsoft- und MilSim-Team aus der Region Basel. Struktur, Teamplay, einheitlicher Auftritt — Infos zu Team, Gear, Trainings, Events und Aufnahme."
+    />
+    <meta name="author" content="Airsoft Squad Basel 04" />
+    <meta name="theme-color" content="#090909" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://airsoftsquadbasel.ch/" />
+
+    <link rel="icon" type="image/png" sizes="256x256" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Airsoft Squad Basel 04" />
+    <meta property="og:locale" content="de_CH" />
+    <meta property="og:title" content="AS BS 04 — Airsoft Squad Basel" />
+    <meta
+      property="og:description"
+      content="Taktisch orientiertes Airsoft- und MilSim-Team aus der Region Basel. Disziplin, Teamplay, klare Linie."
+    />
+    <meta property="og:url" content="https://airsoftsquadbasel.ch/" />
+    <meta property="og:image" content="https://airsoftsquadbasel.ch/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="AS BS 04 — Airsoft Squad Basel" />
+    <meta
+      name="twitter:description"
+      content="Taktisch orientiertes Airsoft- und MilSim-Team aus der Region Basel."
+    />
+    <meta name="twitter:image" content="https://airsoftsquadbasel.ch/og-image.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+
+    <script>
+      // Einblend-Animationen nur vorbereiten, wenn der Browser sie unterstützt und
+      // der Nutzer sie nicht abgeschaltet hat. Verhindert ein Aufblitzen der Inhalte.
+      try {
+        if (
+          'IntersectionObserver' in window &&
+          !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ) {
+          document.documentElement.classList.add('reveal-enabled')
+        }
+      } catch (error) {
+        /* ohne Animation weiter */
+      }
+    </script>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SportsTeam",
+        "name": "Airsoft Squad Basel 04",
+        "alternateName": "AS BS 04",
+        "sport": "Airsoft",
+        "url": "https://airsoftsquadbasel.ch/",
+        "email": "info@airsoftsquadbasel.ch",
+        "areaServed": "Basel, Schweiz",
+        "sameAs": [
+          "https://www.instagram.com/as_bs_04/",
+          "https://discord.gg/SccaWd6h",
+          "https://www.tiktok.com/@airsoft.squad.bs.04"
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="padding: 40px; color: #f3f3f3; font-family: system-ui, sans-serif">
+        <h1>Airsoft Squad Basel 04</h1>
+        <p>
+          Für diese Seite wird JavaScript benötigt. Bitte aktiviere JavaScript oder
+          kontaktiere uns direkt unter
+          <a style="color: #ff4d4f" href="mailto:info@airsoftsquadbasel.ch"
+            >info@airsoftsquadbasel.ch</a
+          >.
+        </p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

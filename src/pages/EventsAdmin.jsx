@@ -1,8 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import AdminBackground from '../components/AdminBackground'
+import Notice from '../components/Notice'
+import {
+  formatDateTime,
+  fromDateTimeLocalValue,
+  isPast,
+  toDateTimeLocalValue,
+} from '../lib/format'
+import { navigate } from '../lib/router'
 import { supabase } from '../lib/supabase'
-import teamLogo from '../assets/logo/AS BS 04.png'
+import '../styles/admin.css'
 
-const initialForm = {
+const INITIAL_FORM = {
   title: '',
   event_type: 'training',
   event_date: '',
@@ -16,86 +25,119 @@ const initialForm = {
   notes: '',
 }
 
-const registrationStatusOptions = ['angemeldet', 'bestätigt', 'warteliste', 'abgesagt']
+const EVENT_TYPES = ['training', 'tryout', 'event', 'milsim', 'meeting']
+const EVENT_STATUSES = ['geplant', 'offen', 'voll', 'abgeschlossen', 'abgesagt']
+const REGISTRATION_STATUSES = ['angemeldet', 'bestätigt', 'warteliste', 'abgesagt']
 
 export default function EventsAdmin() {
   const [events, setEvents] = useState([])
   const [registrations, setRegistrations] = useState([])
-  const [form, setForm] = useState(initialForm)
+  const [form, setForm] = useState(INITIAL_FORM)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [deletingRegistrationId, setDeletingRegistrationId] = useState(null)
-  const [updatingRegistrationId, setUpdatingRegistrationId] = useState(null)
+  const [showPast, setShowPast] = useState(false)
+  const [busyRegistrationId, setBusyRegistrationId] = useState(null)
+  const [notice, setNotice] = useState(null)
+  const formRef = useRef(null)
+
+  const showNotice = useCallback((type, message) => setNotice({ type, message }), [])
+
+  const fetchEvents = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .order('event_date', { ascending: true })
+
+      if (error) throw error
+
+      setEvents(data || [])
+    } catch (error) {
+      console.error(error)
+      showNotice('error', 'Events konnten nicht geladen werden.')
+    }
+  }, [showNotice])
+
+  const fetchRegistrations = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('event_registrations')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      setRegistrations(data || [])
+    } catch (error) {
+      console.error(error)
+      showNotice('error', 'Anmeldungen konnten nicht geladen werden.')
+    }
+  }, [showNotice])
+
+  const fetchAll = useCallback(async () => {
+    try {
+      await Promise.all([fetchEvents(), fetchRegistrations()])
+    } finally {
+      setLoading(false)
+    }
+  }, [fetchEvents, fetchRegistrations])
 
   useEffect(() => {
-    fetchAll()
-  }, [])
+    const run = async () => {
+      await fetchAll()
+    }
 
-  const fetchAll = async () => {
+    run()
+  }, [fetchAll])
+
+  const reload = () => {
     setLoading(true)
-    await Promise.all([fetchEvents(), fetchRegistrations()])
-    setLoading(false)
-  }
-
-  const fetchEvents = async () => {
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('event_date', { ascending: true })
-
-    if (error) {
-      console.error(error)
-      alert('Events konnten nicht geladen werden.')
-      return
-    }
-
-    setEvents(data || [])
-  }
-
-  const fetchRegistrations = async () => {
-    const { data, error } = await supabase
-      .from('event_registrations')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error(error)
-      alert('Anmeldungen konnten nicht geladen werden.')
-      return
-    }
-
-    setRegistrations(data || [])
+    fetchAll()
   }
 
   const groupedRegistrations = useMemo(() => {
     const grouped = {}
 
     for (const registration of registrations) {
-      if (!grouped[registration.event_id]) {
-        grouped[registration.event_id] = []
-      }
+      if (!grouped[registration.event_id]) grouped[registration.event_id] = []
       grouped[registration.event_id].push(registration)
     }
 
     return grouped
   }, [registrations])
 
+  const { upcomingEvents, pastEvents } = useMemo(() => {
+    const upcoming = []
+    const past = []
+
+    for (const event of events) {
+      if (isPast(event.event_date)) past.push(event)
+      else upcoming.push(event)
+    }
+
+    return { upcomingEvents: upcoming, pastEvents: past.reverse() }
+  }, [events])
+
+  const visibleEvents = showPast ? pastEvents : upcomingEvents
+
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    window.location.href = '/admin'
+    try {
+      await supabase.auth.signOut()
+    } catch (error) {
+      console.error(error)
+    }
+
+    navigate('/admin')
   }
 
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
+  const handleChange = (event) => {
+    const { name, value } = event.target
+    setForm((previous) => ({ ...previous, [name]: value }))
   }
 
   const resetForm = () => {
-    setForm(initialForm)
+    setForm(INITIAL_FORM)
     setEditingId(null)
   }
 
@@ -104,9 +146,7 @@ export default function EventsAdmin() {
     setForm({
       title: event.title || '',
       event_type: event.event_type || 'training',
-      event_date: event.event_date
-        ? new Date(event.event_date).toISOString().slice(0, 16)
-        : '',
+      event_date: toDateTimeLocalValue(event.event_date),
       location: event.location || '',
       field_name: event.field_name || '',
       description: event.description || '',
@@ -117,820 +157,633 @@ export default function EventsAdmin() {
       notes: event.notes || '',
     })
 
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async (submitEvent) => {
+    submitEvent.preventDefault()
     setSaving(true)
 
-    const payload = {
-      title: form.title,
-      event_type: form.event_type,
-      event_date: form.event_date || null,
-      location: form.location,
-      field_name: form.field_name,
-      description: form.description,
-      status: form.status,
-      max_participants: form.max_participants ? Number(form.max_participants) : null,
-      required_camo: form.required_camo,
-      required_gear: form.required_gear,
-      notes: form.notes,
-    }
+    const maxParticipants = form.max_participants
+      ? Number(form.max_participants)
+      : null
 
-    let error
-
-    if (editingId) {
-      const response = await supabase
-        .from('events')
-        .update(payload)
-        .eq('id', editingId)
-
-      error = response.error
-    } else {
-      const response = await supabase
-        .from('events')
-        .insert([payload])
-
-      error = response.error
-    }
-
-    if (error) {
-      console.error(error)
-      alert(editingId ? 'Event konnte nicht aktualisiert werden.' : 'Event konnte nicht erstellt werden.')
+    if (maxParticipants !== null && (!Number.isFinite(maxParticipants) || maxParticipants < 1)) {
+      showNotice('error', 'Die maximale Teilnehmerzahl muss mindestens 1 sein.')
       setSaving(false)
       return
     }
 
-    resetForm()
-    await fetchEvents()
-    setSaving(false)
-  }
-
-  const deleteEvent = async (id) => {
-    const confirmed = window.confirm('Event wirklich löschen?')
-    if (!confirmed) return
-
-    const { error } = await supabase
-      .from('events')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      console.error(error)
-      alert('Event konnte nicht gelöscht werden.')
-      return
+    const payload = {
+      title: form.title.trim(),
+      event_type: form.event_type,
+      event_date: fromDateTimeLocalValue(form.event_date),
+      location: form.location.trim(),
+      field_name: form.field_name.trim(),
+      description: form.description.trim(),
+      status: form.status,
+      max_participants: maxParticipants,
+      required_camo: form.required_camo.trim(),
+      required_gear: form.required_gear.trim(),
+      notes: form.notes.trim(),
     }
 
-    if (editingId === id) {
+    try {
+      const { error } = editingId
+        ? await supabase.from('events').update(payload).eq('id', editingId)
+        : await supabase.from('events').insert([payload])
+
+      if (error) throw error
+
+      showNotice('success', editingId ? 'Event aktualisiert.' : 'Event erstellt.')
       resetForm()
+      await fetchEvents()
+    } catch (error) {
+      console.error(error)
+      showNotice(
+        'error',
+        editingId
+          ? 'Event konnte nicht aktualisiert werden.'
+          : 'Event konnte nicht erstellt werden.'
+      )
+    } finally {
+      setSaving(false)
     }
-
-    setEvents((prev) => prev.filter((event) => event.id !== id))
-    setRegistrations((prev) => prev.filter((registration) => registration.event_id !== id))
   }
 
-  const deleteRegistration = async (registrationId) => {
-    const confirmed = window.confirm('Anmeldung wirklich löschen?')
+  const deleteEvent = async (event) => {
+    const confirmed = window.confirm(
+      `Event "${event.title || 'ohne Titel'}" wirklich löschen? Alle Anmeldungen dazu gehen verloren.`
+    )
+
     if (!confirmed) return
 
-    setDeletingRegistrationId(registrationId)
+    try {
+      const { error } = await supabase.from('events').delete().eq('id', event.id)
 
-    const { error } = await supabase
-      .from('event_registrations')
-      .delete()
-      .eq('id', registrationId)
+      if (error) throw error
 
-    if (error) {
+      if (editingId === event.id) resetForm()
+
+      setEvents((previous) => previous.filter((entry) => entry.id !== event.id))
+      setRegistrations((previous) =>
+        previous.filter((registration) => registration.event_id !== event.id)
+      )
+      showNotice('success', 'Event gelöscht.')
+    } catch (error) {
       console.error(error)
-      alert('Anmeldung konnte nicht gelöscht werden.')
-      setDeletingRegistrationId(null)
-      return
+      showNotice('error', 'Event konnte nicht gelöscht werden.')
     }
+  }
 
-    await fetchRegistrations()
-    await fetchEvents()
-    setDeletingRegistrationId(null)
+  const deleteRegistration = async (registration) => {
+    const confirmed = window.confirm(
+      `Anmeldung von "${registration.name || 'unbekannt'}" wirklich löschen?`
+    )
+
+    if (!confirmed) return
+
+    setBusyRegistrationId(registration.id)
+
+    try {
+      const { error } = await supabase
+        .from('event_registrations')
+        .delete()
+        .eq('id', registration.id)
+
+      if (error) throw error
+
+      await fetchAll()
+      showNotice('success', 'Anmeldung entfernt.')
+    } catch (error) {
+      console.error(error)
+      showNotice('error', 'Anmeldung konnte nicht gelöscht werden.')
+    } finally {
+      setBusyRegistrationId(null)
+    }
   }
 
   const updateRegistrationStatus = async (registration, newStatus) => {
-    setUpdatingRegistrationId(registration.id)
+    setBusyRegistrationId(registration.id)
+
+    const now = new Date().toISOString()
 
     const payload = {
       registration_status: newStatus,
-      confirmed_at: newStatus === 'bestätigt' ? new Date().toISOString() : null,
-      cancelled_at: newStatus === 'abgesagt' ? new Date().toISOString() : null,
-      waitlist_position: newStatus === 'warteliste' ? registration.waitlist_position || 1 : null,
+      confirmed_at: newStatus === 'bestätigt' ? now : null,
+      cancelled_at: newStatus === 'abgesagt' ? now : null,
+      waitlist_position:
+        newStatus === 'warteliste' ? registration.waitlist_position || 1 : null,
     }
 
-    const { error } = await supabase
-      .from('event_registrations')
-      .update(payload)
-      .eq('id', registration.id)
+    try {
+      const { error } = await supabase
+        .from('event_registrations')
+        .update(payload)
+        .eq('id', registration.id)
 
-    if (error) {
+      if (error) throw error
+
+      await fetchAll()
+    } catch (error) {
       console.error(error)
-      alert('Status konnte nicht aktualisiert werden.')
-      setUpdatingRegistrationId(null)
-      return
+      showNotice('error', 'Status konnte nicht aktualisiert werden.')
+    } finally {
+      setBusyRegistrationId(null)
     }
+  }
 
-    await fetchRegistrations()
-    await fetchEvents()
-    setUpdatingRegistrationId(null)
+  const copyParticipants = async (event, list) => {
+    const text = list.length
+      ? list
+          .map(
+            (registration) =>
+              `${registration.name} — ${registration.discord_name || '-'} (${
+                registration.registration_status || 'angemeldet'
+              })`
+          )
+          .join('\n')
+      : 'Keine Anmeldungen.'
+
+    try {
+      await navigator.clipboard.writeText(`${event.title}\n\n${text}`)
+      showNotice('success', 'Teilnehmerliste kopiert.')
+    } catch (error) {
+      console.error(error)
+      showNotice('error', 'Kopieren wurde vom Browser blockiert.')
+    }
   }
 
   return (
-    <div style={styles.page}>
-      <style>{`
-        @keyframes adminFloat {
-          0% { transform: translate3d(0, 0, 0) scale(1); }
-          50% { transform: translate3d(0, -20px, 0) scale(1.03); }
-          100% { transform: translate3d(0, 0, 0) scale(1); }
-        }
+    <div className="admin-page">
+      <AdminBackground />
 
-        @keyframes redPulse {
-          0% { opacity: 0.35; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(1.08); }
-          100% { opacity: 0.35; transform: scale(1); }
-        }
-
-        .events-logo-bg {
-          position: fixed;
-          inset: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          pointer-events: none;
-          z-index: 0;
-          opacity: 0.06;
-        }
-
-        .events-logo-bg img {
-          width: min(55vw, 700px);
-          animation: adminFloat 9s ease-in-out infinite;
-          filter: drop-shadow(0 0 40px rgba(179,18,23,0.35));
-        }
-
-        .events-red-glow-1,
-        .events-red-glow-2 {
-          position: fixed;
-          width: 38vw;
-          height: 38vw;
-          border-radius: 999px;
-          pointer-events: none;
-          z-index: 0;
-          filter: blur(90px);
-          animation: redPulse 7s ease-in-out infinite;
-        }
-
-        .events-red-glow-1 {
-          top: -10vw;
-          left: -8vw;
-          background: rgba(179,18,23,0.28);
-        }
-
-        .events-red-glow-2 {
-          bottom: -12vw;
-          right: -8vw;
-          background: rgba(179,18,23,0.18);
-          animation-delay: 1.8s;
-        }
-      `}</style>
-
-      <div className="events-red-glow-1"></div>
-      <div className="events-red-glow-2"></div>
-      <div className="events-logo-bg">
-        <img src={teamLogo} alt="AS BS 04 Background Logo" />
-      </div>
-
-      <div style={styles.content}>
-        <div style={styles.heroCard}>
+      <main className="admin-content">
+        <header className="admin-hero">
           <div>
-            <p style={styles.eyebrow}>AS BS 04 / Event Ops</p>
-            <h1 style={styles.title}>Event Verwaltung</h1>
-            <p style={styles.subtitle}>
+            <p className="admin-eyebrow">AS BS 04 / Event Ops</p>
+            <h1 className="admin-title">Event Verwaltung</h1>
+            <p className="admin-subtitle">
               Trainings, Spieltage, Tryouts und interne Termine zentral erstellen,
               bearbeiten und inklusive Anmeldungen, Warteliste und Status verwalten.
             </p>
           </div>
 
-          <div style={styles.topActions}>
-            <button style={styles.secondaryBtn} onClick={fetchAll}>
+          <div className="admin-actions">
+            <button className="admin-btn" type="button" onClick={reload}>
               Neu laden
             </button>
-            <button style={styles.secondaryBtn} onClick={handleLogout}>
+            <button className="admin-btn" type="button" onClick={() => navigate('/admin')}>
+              Recruitment
+            </button>
+            <button className="admin-btn" type="button" onClick={handleLogout}>
               Logout
             </button>
             <button
-              style={styles.secondaryBtn}
-              onClick={() => (window.location.href = '/admin')}
-            >
-              Recruitment
-            </button>
-            <button
-              style={styles.primaryBtn}
-              onClick={() => (window.location.href = '/')}
+              className="admin-btn admin-btn-primary"
+              type="button"
+              onClick={() => navigate('/')}
             >
               Zur Website
             </button>
           </div>
-        </div>
+        </header>
 
-        <div style={styles.layout}>
-          <div style={styles.formCard}>
-            <h2 style={styles.sectionTitle}>
+        <Notice notice={notice} onDismiss={() => setNotice(null)} />
+
+        <div className="events-layout">
+          <section className="events-panel events-panel-form" ref={formRef}>
+            <h2 className="events-section-title">
               {editingId ? 'Event bearbeiten' : 'Neues Event'}
             </h2>
 
-            <form onSubmit={handleSubmit} style={styles.form}>
-              <input
-                name="title"
-                placeholder="Titel"
-                value={form.title}
-                onChange={handleChange}
-                required
-                style={styles.input}
-              />
+            <form onSubmit={handleSubmit} className="events-form">
+              <Field label="Titel" htmlFor="event-title">
+                <input
+                  id="event-title"
+                  className="admin-input"
+                  name="title"
+                  placeholder="z. B. Training Gundeli"
+                  value={form.title}
+                  onChange={handleChange}
+                  required
+                />
+              </Field>
 
-              <select
-                name="event_type"
-                value={form.event_type}
-                onChange={handleChange}
-                style={styles.input}
+              <Field label="Art" htmlFor="event-type">
+                <select
+                  id="event-type"
+                  className="admin-select"
+                  name="event_type"
+                  value={form.event_type}
+                  onChange={handleChange}
+                >
+                  {EVENT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Datum und Uhrzeit" htmlFor="event-date">
+                <input
+                  id="event-date"
+                  className="admin-input"
+                  name="event_date"
+                  type="datetime-local"
+                  value={form.event_date}
+                  onChange={handleChange}
+                  required
+                />
+              </Field>
+
+              <Field label="Ort" htmlFor="event-location">
+                <input
+                  id="event-location"
+                  className="admin-input"
+                  name="location"
+                  placeholder="Ort / Gemeinde"
+                  value={form.location}
+                  onChange={handleChange}
+                />
+              </Field>
+
+              <Field label="Field / Gelände" htmlFor="event-field">
+                <input
+                  id="event-field"
+                  className="admin-input"
+                  name="field_name"
+                  placeholder="Name des Geländes"
+                  value={form.field_name}
+                  onChange={handleChange}
+                />
+              </Field>
+
+              <Field
+                label="Max. Teilnehmer"
+                htmlFor="event-max"
+                hint="Leer lassen für unbegrenzt."
               >
-                <option value="training">training</option>
-                <option value="tryout">tryout</option>
-                <option value="event">event</option>
-                <option value="milsim">milsim</option>
-                <option value="meeting">meeting</option>
-              </select>
+                <input
+                  id="event-max"
+                  className="admin-input"
+                  name="max_participants"
+                  type="number"
+                  min="1"
+                  placeholder="z. B. 20"
+                  value={form.max_participants}
+                  onChange={handleChange}
+                />
+              </Field>
 
-              <input
-                name="event_date"
-                type="datetime-local"
-                value={form.event_date}
-                onChange={handleChange}
-                required
-                style={styles.input}
-              />
+              <Field label="Erforderliche Tarnung" htmlFor="event-camo">
+                <input
+                  id="event-camo"
+                  className="admin-input"
+                  name="required_camo"
+                  placeholder="z. B. OD / Ranger Green"
+                  value={form.required_camo}
+                  onChange={handleChange}
+                />
+              </Field>
 
-              <input
-                name="location"
-                placeholder="Ort"
-                value={form.location}
-                onChange={handleChange}
-                style={styles.input}
-              />
+              <Field label="Erforderliches Gear" htmlFor="event-gear">
+                <input
+                  id="event-gear"
+                  className="admin-input"
+                  name="required_gear"
+                  placeholder="z. B. Plate Carrier, Funk"
+                  value={form.required_gear}
+                  onChange={handleChange}
+                />
+              </Field>
 
-              <input
-                name="field_name"
-                placeholder="Field / Gelände"
-                value={form.field_name}
-                onChange={handleChange}
-                style={styles.input}
-              />
+              <Field label="Status" htmlFor="event-status">
+                <select
+                  id="event-status"
+                  className="admin-select"
+                  name="status"
+                  value={form.status}
+                  onChange={handleChange}
+                >
+                  {EVENT_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
-              <input
-                name="max_participants"
-                type="number"
-                placeholder="Max Teilnehmer"
-                value={form.max_participants}
-                onChange={handleChange}
-                style={styles.input}
-              />
-
-              <input
-                name="required_camo"
-                placeholder="Erforderliche Tarnung"
-                value={form.required_camo}
-                onChange={handleChange}
-                style={styles.input}
-              />
-
-              <input
-                name="required_gear"
-                placeholder="Erforderliches Gear"
-                value={form.required_gear}
-                onChange={handleChange}
-                style={styles.input}
-              />
-
-              <select
-                name="status"
-                value={form.status}
-                onChange={handleChange}
-                style={styles.input}
+              <Field
+                label="Beschreibung"
+                htmlFor="event-description"
+                hint="Wird öffentlich auf der Website angezeigt."
               >
-                <option value="geplant">geplant</option>
-                <option value="offen">offen</option>
-                <option value="voll">voll</option>
-                <option value="abgeschlossen">abgeschlossen</option>
-                <option value="abgesagt">abgesagt</option>
-              </select>
+                <textarea
+                  id="event-description"
+                  className="admin-textarea"
+                  name="description"
+                  placeholder="Ablauf, Treffpunkt, Kosten…"
+                  value={form.description}
+                  onChange={handleChange}
+                  rows={4}
+                />
+              </Field>
 
-              <textarea
-                name="description"
-                placeholder="Beschreibung"
-                value={form.description}
-                onChange={handleChange}
-                rows={4}
-                style={styles.textarea}
-              />
+              <Field
+                label="Interne Notizen"
+                htmlFor="event-notes"
+                hint="Nur im Dashboard sichtbar."
+              >
+                <textarea
+                  id="event-notes"
+                  className="admin-textarea"
+                  name="notes"
+                  placeholder="Absprachen, Material, offene Punkte…"
+                  value={form.notes}
+                  onChange={handleChange}
+                  rows={4}
+                />
+              </Field>
 
-              <textarea
-                name="notes"
-                placeholder="Interne Notizen"
-                value={form.notes}
-                onChange={handleChange}
-                rows={4}
-                style={styles.textarea}
-              />
-
-              <div style={styles.formActions}>
-                <button type="submit" style={styles.primaryBtn} disabled={saving}>
+              <div className="events-form-actions">
+                <button
+                  type="submit"
+                  className="admin-btn admin-btn-primary"
+                  disabled={saving}
+                >
                   {saving
-                    ? 'Speichert...'
+                    ? 'Speichert…'
                     : editingId
-                    ? 'Event aktualisieren'
-                    : 'Event erstellen'}
+                      ? 'Event aktualisieren'
+                      : 'Event erstellen'}
                 </button>
 
                 {editingId && (
-                  <button
-                    type="button"
-                    style={styles.secondaryBtn}
-                    onClick={resetForm}
-                  >
+                  <button type="button" className="admin-btn" onClick={resetForm}>
                     Bearbeitung abbrechen
                   </button>
                 )}
               </div>
             </form>
-          </div>
+          </section>
 
-          <div style={styles.listCard}>
-            <h2 style={styles.sectionTitle}>Bestehende Events</h2>
+          <section className="events-panel">
+            <div className="event-participants-head">
+              <h2 className="events-section-title is-inline">
+                {showPast ? 'Vergangene Events' : 'Kommende Events'}
+              </h2>
+
+              <div className="event-item-buttons">
+                <button
+                  type="button"
+                  className={`admin-btn admin-btn-sm ${showPast ? '' : 'is-active'}`}
+                  onClick={() => setShowPast(false)}
+                >
+                  Kommend ({upcomingEvents.length})
+                </button>
+                <button
+                  type="button"
+                  className={`admin-btn admin-btn-sm ${showPast ? 'is-active' : ''}`}
+                  onClick={() => setShowPast(true)}
+                >
+                  Vergangen ({pastEvents.length})
+                </button>
+              </div>
+            </div>
 
             {loading ? (
-              <p>Lade Events...</p>
-            ) : events.length === 0 ? (
-              <p>Keine Events vorhanden.</p>
+              <div className="admin-empty">Lade Events…</div>
+            ) : visibleEvents.length === 0 ? (
+              <div className="admin-empty">
+                {showPast
+                  ? 'Keine vergangenen Events vorhanden.'
+                  : 'Keine kommenden Events vorhanden. Lege links ein neues Event an.'}
+              </div>
             ) : (
-              <div style={styles.eventList}>
-                {events.map((event) => {
-                  const eventRegistrations = groupedRegistrations[event.id] || []
-
-                  const activeParticipants = eventRegistrations.filter(
-                    (entry) =>
-                      entry.registration_status !== 'abgesagt' &&
-                      entry.registration_status !== 'warteliste'
-                  )
-
-                  const waitlistParticipants = eventRegistrations.filter(
-                    (entry) => entry.registration_status === 'warteliste'
-                  )
-
-                  return (
-                    <div key={event.id} style={styles.eventItem}>
-                      <div style={styles.eventHeader}>
-                        <div>
-                          <h3 style={styles.eventTitle}>{event.title}</h3>
-                          <p style={styles.meta}>
-                            {event.event_type} ·{' '}
-                            {event.event_date
-                              ? new Date(event.event_date).toLocaleString('de-CH')
-                              : '-'}
-                          </p>
-                        </div>
-
-                        <div style={styles.eventButtons}>
-                          <button
-                            style={styles.secondaryBtn}
-                            onClick={() => handleEdit(event)}
-                          >
-                            Bearbeiten
-                          </button>
-                          <button
-                            style={styles.deleteBtn}
-                            onClick={() => deleteEvent(event.id)}
-                          >
-                            Löschen
-                          </button>
-                        </div>
-                      </div>
-
-                      <div style={styles.infoGrid}>
-                        <Info label="Status" value={event.status} />
-                        <Info label="Ort" value={event.location || '-'} />
-                        <Info label="Field" value={event.field_name || '-'} />
-                        <Info label="Max Teilnehmer" value={event.max_participants ?? '-'} />
-                      </div>
-
-                      <div style={styles.infoGrid}>
-                        <Info label="Aktive Teilnehmer" value={activeParticipants.length} />
-                        <Info label="Warteliste" value={waitlistParticipants.length} />
-                        <Info label="Tarnung" value={event.required_camo || '-'} />
-                        <Info label="Gear" value={event.required_gear || '-'} />
-                      </div>
-
-                      <div style={styles.block}>
-                        <p style={styles.label}>Beschreibung</p>
-                        <p style={styles.value}>{event.description || '-'}</p>
-                      </div>
-
-                      <div style={styles.block}>
-                        <p style={styles.label}>Interne Notizen</p>
-                        <p style={styles.value}>{event.notes || '-'}</p>
-                      </div>
-
-                      <div style={styles.participantsSection}>
-                        <div style={styles.participantsHeader}>
-                          <div>
-                            <p style={styles.label}>Teilnehmerliste</p>
-                            <h4 style={styles.participantsTitle}>
-                              {activeParticipants.length} aktiv / {waitlistParticipants.length} Warteliste
-                            </h4>
-                          </div>
-
-                          <div style={styles.participantCountBadge}>
-                            {activeParticipants.length}
-                            {event.max_participants ? ` / ${event.max_participants}` : ''}
-                          </div>
-                        </div>
-
-                        {eventRegistrations.length === 0 ? (
-                          <div style={styles.emptyParticipants}>
-                            Noch keine Anmeldungen.
-                          </div>
-                        ) : (
-                          <div style={styles.registrationGrid}>
-                            {eventRegistrations.map((registration) => (
-                              <div key={registration.id} style={styles.registrationCard}>
-                                <div style={styles.registrationCardTop}>
-                                  <div>
-                                    <p style={styles.registrationName}>
-                                      {registration.name}
-                                    </p>
-                                    <p style={styles.registrationSub}>
-                                      Discord: {registration.discord_name || '-'}
-                                    </p>
-                                    <p style={styles.registrationSub}>
-                                      Rolle: {registration.role || '-'}
-                                    </p>
-                                    <p style={styles.registrationSub}>
-                                      Status: {registration.registration_status || 'angemeldet'}
-                                    </p>
-                                    {registration.waitlist_position && (
-                                      <p style={styles.registrationSub}>
-                                        Wartelistenplatz: {registration.waitlist_position}
-                                      </p>
-                                    )}
-                                    <p style={styles.registrationDate}>
-                                      {registration.created_at
-                                        ? new Date(registration.created_at).toLocaleString('de-CH')
-                                        : '-'}
-                                    </p>
-                                  </div>
-
-                                  <button
-                                    style={styles.deleteBtnSmall}
-                                    disabled={deletingRegistrationId === registration.id}
-                                    onClick={() => deleteRegistration(registration.id)}
-                                  >
-                                    {deletingRegistrationId === registration.id ? 'Löscht...' : 'Entfernen'}
-                                  </button>
-                                </div>
-
-                                <div style={styles.registrationActions}>
-                                  <select
-                                    style={styles.statusSelect}
-                                    value={registration.registration_status || 'angemeldet'}
-                                    disabled={updatingRegistrationId === registration.id}
-                                    onChange={(e) =>
-                                      updateRegistrationStatus(registration, e.target.value)
-                                    }
-                                  >
-                                    {registrationStatusOptions.map((option) => (
-                                      <option key={option} value={option}>
-                                        {option}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
+              <div className="event-list">
+                {visibleEvents.map((event) => (
+                  <EventItem
+                    key={event.id}
+                    event={event}
+                    registrations={groupedRegistrations[event.id] || []}
+                    isEditing={editingId === event.id}
+                    isPastEvent={showPast}
+                    busyRegistrationId={busyRegistrationId}
+                    onEdit={handleEdit}
+                    onDelete={deleteEvent}
+                    onDeleteRegistration={deleteRegistration}
+                    onUpdateRegistrationStatus={updateRegistrationStatus}
+                    onCopyParticipants={copyParticipants}
+                  />
+                ))}
               </div>
             )}
-          </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function EventItem({
+  event,
+  registrations,
+  isEditing,
+  isPastEvent,
+  busyRegistrationId,
+  onEdit,
+  onDelete,
+  onDeleteRegistration,
+  onUpdateRegistrationStatus,
+  onCopyParticipants,
+}) {
+  const active = registrations.filter(
+    (entry) =>
+      entry.registration_status !== 'abgesagt' &&
+      entry.registration_status !== 'warteliste'
+  )
+
+  const waitlist = registrations.filter(
+    (entry) => entry.registration_status === 'warteliste'
+  )
+
+  return (
+    <article
+      className={`event-item ${isEditing ? 'is-editing' : ''} ${
+        isPastEvent ? 'is-past' : ''
+      }`}
+    >
+      <div className="event-item-head">
+        <div>
+          <h3 className="event-item-title">{event.title || 'Ohne Titel'}</h3>
+          <p className="event-item-meta">
+            {event.event_type} · {formatDateTime(event.event_date)}
+          </p>
+        </div>
+
+        <div className="event-item-buttons">
+          <button
+            type="button"
+            className="admin-btn admin-btn-sm"
+            onClick={() => onEdit(event)}
+          >
+            {isEditing ? 'Wird bearbeitet' : 'Bearbeiten'}
+          </button>
+          <button
+            type="button"
+            className="admin-btn admin-btn-sm admin-btn-danger"
+            onClick={() => onDelete(event)}
+          >
+            Löschen
+          </button>
         </div>
       </div>
-    </div>
+
+      <div className="admin-info-grid">
+        <InfoBox label="Status" value={event.status} />
+        <InfoBox label="Ort" value={event.location} />
+        <InfoBox label="Field" value={event.field_name} />
+        <InfoBox label="Max Teilnehmer" value={event.max_participants} />
+      </div>
+
+      <div className="admin-info-grid">
+        <InfoBox label="Aktive Teilnehmer" value={active.length} />
+        <InfoBox label="Warteliste" value={waitlist.length} />
+        <InfoBox label="Tarnung" value={event.required_camo} />
+        <InfoBox label="Gear" value={event.required_gear} />
+      </div>
+
+      <div className="admin-info-grid admin-info-grid-wide">
+        <InfoBox label="Beschreibung" value={event.description} multiline />
+        <InfoBox label="Interne Notizen" value={event.notes} multiline />
+      </div>
+
+      <div className="event-participants">
+        <div className="event-participants-head">
+          <div>
+            <p className="admin-info-label">Teilnehmerliste</p>
+            <h4 className="event-participants-title">
+              {active.length} aktiv / {waitlist.length} Warteliste
+            </h4>
+          </div>
+
+          <div className="event-item-buttons">
+            <button
+              type="button"
+              className="admin-btn admin-btn-sm"
+              onClick={() => onCopyParticipants(event, registrations)}
+            >
+              Liste kopieren
+            </button>
+            <span className="event-participants-count">
+              {active.length}
+              {event.max_participants ? ` / ${event.max_participants}` : ''}
+            </span>
+          </div>
+        </div>
+
+        {registrations.length === 0 ? (
+          <div className="admin-empty">Noch keine Anmeldungen.</div>
+        ) : (
+          <div className="registration-list">
+            {registrations.map((registration) => {
+              const status = registration.registration_status || 'angemeldet'
+              const isBusy = busyRegistrationId === registration.id
+
+              return (
+                <div
+                  key={registration.id}
+                  className={`registration-card ${
+                    status === 'warteliste' ? 'is-waitlist' : ''
+                  } ${status === 'abgesagt' ? 'is-cancelled' : ''}`}
+                >
+                  <div className="registration-card-top">
+                    <div>
+                      <p className="registration-name">
+                        {registration.name || 'Ohne Namen'}
+                      </p>
+                      <p className="registration-sub">
+                        Discord: {registration.discord_name || '–'}
+                      </p>
+                      <p className="registration-sub">
+                        Rolle: {registration.role || '–'}
+                      </p>
+                      {status === 'warteliste' && registration.waitlist_position && (
+                        <p className="registration-sub">
+                          Wartelistenplatz: {registration.waitlist_position}
+                        </p>
+                      )}
+                      <p className="registration-date">
+                        {formatDateTime(registration.created_at)}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn-sm admin-btn-danger"
+                      disabled={isBusy}
+                      onClick={() => onDeleteRegistration(registration)}
+                    >
+                      {isBusy ? 'Lädt…' : 'Entfernen'}
+                    </button>
+                  </div>
+
+                  <div className="registration-actions">
+                    <label
+                      className="visually-hidden"
+                      htmlFor={`registration-status-${registration.id}`}
+                    >
+                      Status der Anmeldung
+                    </label>
+                    <select
+                      id={`registration-status-${registration.id}`}
+                      className="admin-select"
+                      value={status}
+                      disabled={isBusy}
+                      onChange={(changeEvent) =>
+                        onUpdateRegistrationStatus(registration, changeEvent.target.value)
+                      }
+                    >
+                      {REGISTRATION_STATUSES.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </article>
   )
 }
 
-function Info({ label, value }) {
+function Field({ label, htmlFor, hint, children }) {
   return (
-    <div style={styles.infoBox}>
-      <p style={styles.label}>{label}</p>
-      <p style={styles.value}>{value}</p>
+    <div className="events-form-field">
+      <label className="admin-label" htmlFor={htmlFor}>
+        {label}
+      </label>
+      {children}
+      {hint && <p className="admin-help">{hint}</p>}
     </div>
   )
 }
 
-const styles = {
-  page: {
-    minHeight: '100vh',
-    background: 'radial-gradient(circle at top, #191b23 0%, #0b0c10 48%, #06070a 100%)',
-    color: '#fff',
-    position: 'relative',
-  },
-  content: {
-    position: 'relative',
-    zIndex: 1,
-    maxWidth: '1500px',
-    margin: '0 auto',
-    padding: '40px 24px 80px',
-  },
-  heroCard: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '20px',
-    flexWrap: 'wrap',
-    marginBottom: '26px',
-    padding: '28px',
-    borderRadius: '22px',
-    border: '1px solid rgba(255,255,255,0.08)',
-    background: 'rgba(255,255,255,0.04)',
-    boxShadow: '0 20px 70px rgba(0,0,0,0.35)',
-  },
-  eyebrow: {
-    margin: '0 0 10px 0',
-    color: '#b31217',
-    fontSize: '12px',
-    letterSpacing: '2px',
-    textTransform: 'uppercase',
-    fontWeight: 700,
-  },
-  title: {
-    margin: '0 0 10px 0',
-    fontSize: '38px',
-    lineHeight: 1.08,
-  },
-  subtitle: {
-    margin: 0,
-    color: '#b8bcc7',
-    lineHeight: 1.6,
-  },
-  topActions: {
-    display: 'flex',
-    gap: '10px',
-    alignItems: 'flex-start',
-    flexWrap: 'wrap',
-  },
-  primaryBtn: {
-    padding: '12px 16px',
-    borderRadius: '12px',
-    border: '1px solid rgba(179,18,23,0.7)',
-    background: 'rgba(179,18,23,0.22)',
-    color: '#fff',
-    cursor: 'pointer',
-    fontWeight: 700,
-  },
-  secondaryBtn: {
-    padding: '12px 16px',
-    borderRadius: '12px',
-    border: '1px solid rgba(255,255,255,0.10)',
-    background: 'rgba(255,255,255,0.04)',
-    color: '#fff',
-    cursor: 'pointer',
-    fontWeight: 700,
-  },
-  layout: {
-    display: 'grid',
-    gridTemplateColumns: '420px 1fr',
-    gap: '20px',
-  },
-  formCard: {
-    padding: '22px',
-    borderRadius: '20px',
-    border: '1px solid rgba(255,255,255,0.08)',
-    background: 'rgba(255,255,255,0.04)',
-    alignSelf: 'start',
-  },
-  listCard: {
-    padding: '22px',
-    borderRadius: '20px',
-    border: '1px solid rgba(255,255,255,0.08)',
-    background: 'rgba(255,255,255,0.04)',
-  },
-  sectionTitle: {
-    marginTop: 0,
-    marginBottom: '18px',
-    fontSize: '24px',
-  },
-  form: {
-    display: 'grid',
-    gap: '12px',
-  },
-  formActions: {
-    display: 'flex',
-    gap: '10px',
-    flexWrap: 'wrap',
-  },
-  input: {
-    width: '100%',
-    padding: '13px 14px',
-    borderRadius: '14px',
-    border: '1px solid rgba(255,255,255,0.10)',
-    background: 'rgba(12,14,20,0.9)',
-    color: '#fff',
-    outline: 'none',
-    boxSizing: 'border-box',
-  },
-  textarea: {
-    width: '100%',
-    padding: '13px 14px',
-    borderRadius: '14px',
-    border: '1px solid rgba(255,255,255,0.10)',
-    background: 'rgba(12,14,20,0.9)',
-    color: '#fff',
-    outline: 'none',
-    resize: 'vertical',
-    boxSizing: 'border-box',
-  },
-  eventList: {
-    display: 'grid',
-    gap: '16px',
-  },
-  eventItem: {
-    padding: '18px',
-    borderRadius: '18px',
-    border: '1px solid rgba(255,255,255,0.08)',
-    background: 'rgba(0,0,0,0.22)',
-  },
-  eventHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '14px',
-    alignItems: 'flex-start',
-    marginBottom: '14px',
-    flexWrap: 'wrap',
-  },
-  eventButtons: {
-    display: 'flex',
-    gap: '10px',
-    flexWrap: 'wrap',
-  },
-  eventTitle: {
-    margin: '0 0 6px 0',
-    fontSize: '22px',
-  },
-  meta: {
-    margin: 0,
-    color: '#b8bcc7',
-    fontSize: '14px',
-  },
-  infoGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '12px',
-    marginBottom: '12px',
-  },
-  infoBox: {
-    padding: '12px',
-    borderRadius: '12px',
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.06)',
-  },
-  block: {
-    marginTop: '12px',
-    padding: '12px',
-    borderRadius: '12px',
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.06)',
-  },
-  label: {
-    margin: '0 0 6px 0',
-    color: '#9ea4b3',
-    fontSize: '12px',
-    textTransform: 'uppercase',
-    letterSpacing: '1px',
-  },
-  value: {
-    margin: 0,
-    color: '#fff',
-    lineHeight: 1.5,
-    whiteSpace: 'pre-wrap',
-  },
-  participantsSection: {
-    marginTop: '14px',
-    padding: '14px',
-    borderRadius: '14px',
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.06)',
-  },
-  participantsHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '12px',
-    marginBottom: '14px',
-    flexWrap: 'wrap',
-  },
-  participantsTitle: {
-    margin: 0,
-    fontSize: '20px',
-    color: '#fff',
-  },
-  participantCountBadge: {
-    padding: '8px 12px',
-    borderRadius: '999px',
-    background: 'rgba(179,18,23,0.18)',
-    border: '1px solid rgba(179,18,23,0.35)',
-    color: '#fff',
-    fontWeight: 700,
-    whiteSpace: 'nowrap',
-  },
-  emptyParticipants: {
-    padding: '14px',
-    borderRadius: '12px',
-    background: 'rgba(255,255,255,0.03)',
-    color: '#b8bcc7',
-  },
-  registrationGrid: {
-    display: 'grid',
-    gap: '12px',
-  },
-  registrationCard: {
-    padding: '14px',
-    borderRadius: '14px',
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.06)',
-  },
-  registrationCardTop: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '12px',
-    alignItems: 'flex-start',
-    flexWrap: 'wrap',
-  },
-  registrationName: {
-    margin: '0 0 6px 0',
-    color: '#fff',
-    fontWeight: 700,
-    fontSize: '16px',
-  },
-  registrationSub: {
-    margin: '0 0 4px 0',
-    color: '#b8bcc7',
-    fontSize: '13px',
-    lineHeight: 1.4,
-  },
-  registrationDate: {
-    margin: '6px 0 0 0',
-    color: '#8f97a7',
-    fontSize: '12px',
-  },
-  registrationActions: {
-    marginTop: '12px',
-    display: 'flex',
-    gap: '10px',
-    flexWrap: 'wrap',
-  },
-  statusSelect: {
-    width: '100%',
-    maxWidth: '240px',
-    padding: '10px 12px',
-    borderRadius: '10px',
-    border: '1px solid rgba(255,255,255,0.10)',
-    background: 'rgba(12,14,20,0.9)',
-    color: '#fff',
-    outline: 'none',
-  },
-  deleteBtn: {
-    padding: '10px 14px',
-    borderRadius: '12px',
-    border: '1px solid rgba(239,68,68,0.35)',
-    background: 'rgba(239,68,68,0.16)',
-    color: '#fecaca',
-    cursor: 'pointer',
-    fontWeight: 700,
-  },
-  deleteBtnSmall: {
-    padding: '8px 12px',
-    borderRadius: '10px',
-    border: '1px solid rgba(239,68,68,0.35)',
-    background: 'rgba(239,68,68,0.16)',
-    color: '#fecaca',
-    cursor: 'pointer',
-    fontWeight: 700,
-    whiteSpace: 'nowrap',
-  },
+function InfoBox({ label, value, multiline = false }) {
+  const hasValue = value !== null && value !== undefined && value !== ''
+
+  return (
+    <div className="admin-info-box">
+      <p className="admin-info-label">{label}</p>
+      <p className={`admin-info-value ${multiline ? 'is-multiline' : ''}`}>
+        {hasValue ? value : '–'}
+      </p>
+    </div>
+  )
 }

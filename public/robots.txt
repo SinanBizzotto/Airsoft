@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/events
+
+Sitemap: https://airsoftsquadbasel.ch/sitemap.xml
