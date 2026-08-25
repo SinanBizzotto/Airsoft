@@ -21,14 +21,21 @@ npm run dev
 
 ## Umgebungsvariablen
 
-| Variable                 | Beschreibung                             |
-| ------------------------ | ---------------------------------------- |
-| `VITE_SUPABASE_URL`      | Projekt-URL aus Supabase                 |
-| `VITE_SUPABASE_ANON_KEY` | Öffentlicher Anon Key aus Supabase       |
+| Variable                 | Beschreibung                       |
+| ------------------------ | ---------------------------------- |
+| `VITE_SUPABASE_URL`      | Projekt-URL aus Supabase           |
+| `VITE_SUPABASE_ANON_KEY` | Publishable Key aus Supabase       |
 
-Alles mit `VITE_`-Prefix landet im Client-Bundle und ist öffentlich einsehbar.
-Der Service-Role-Key darf hier niemals eingetragen werden. Die `.env` ist
-bewusst nicht im Repository.
+Beide sind **optional**: [`src/lib/supabase.js`](src/lib/supabase.js) enthält die
+öffentlichen Projektwerte als Fallback, damit der Build ohne Zusatzkonfiguration
+läuft. Gesetzte Umgebungsvariablen haben Vorrang — das ist der sauberere Weg,
+wenn der Key einmal gewechselt wird.
+
+Alles mit `VITE_`-Prefix landet im Client-Bundle und ist für jeden Besucher im
+Quelltext lesbar. Der Publishable Key ist genau dafür gedacht; der Schutz der
+Daten liegt vollständig bei den RLS-Policies. Der **Service-Role-Key** und
+Webhook-URLs gehören niemals in eine `VITE_`-Variable oder ins Repository — die
+`.env` ist deshalb in `.gitignore`.
 
 ## Routen
 
